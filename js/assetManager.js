@@ -79,6 +79,36 @@ class AssetManager {
       }
     });
     root.userData.assetKey = key;
+
+    // Some source glTFs bake in wrong real-world scale (e.g. a "desk"
+    // that measures ~1500 units wide). Correct that first so every
+    // downstream measurement (bounding box, footprint) reflects the
+    // model's actual real-world size.
+    const scaleFix = GAME_CONFIG.modelScaleFixes && GAME_CONFIG.modelScaleFixes[key];
+    if (scaleFix && scaleFix !== 1) {
+      root.scale.multiplyScalar(scaleFix);
+    }
+
+    // Many source glTFs are exported with their pivot at the object's
+    // vertical/geometric center rather than its base. Placing those at
+    // y=0 buries half the mesh in the floor. Wrap the real geometry in
+    // an inner group and shift it up so the OUTER root's origin sits at
+    // the model's true floor contact point (min Y of its bounding box).
+    // Everything else in the codebase keeps treating `get(key)` as "an
+    // object whose origin is its footprint on the ground."
+    const box = new THREE.Box3().setFromObject(root);
+    if (isFinite(box.min.y)) {
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      root.userData.footprint = { width: size.x, depth: size.z, height: size.y };
+      if (Math.abs(box.min.y) > 1e-4) {
+        const inner = new THREE.Group();
+        inner.name = "originAlign";
+        while (root.children.length) inner.add(root.children[0]);
+        inner.position.y = -box.min.y;
+        root.add(inner);
+      }
+    }
   }
 
   _makePlaceholder(key) {
