@@ -36,6 +36,20 @@ const GAME_CONFIG = {
     whiteboard:         "whiteboard.glb",
   },
 
+  // A handful of these Sketchfab/FBX exports bake in wrong real-world
+  // scale (e.g. desk_set.glb measures ~1500 units wide as exported —
+  // a "desk" the size of a football field). Uniform per-key correction
+  // applied once at load time, before anything is positioned. Keys not
+  // listed here default to 1 (already correct scale).
+  modelScaleFixes: {
+    deskSet:            1 / 1000,  // ~1500 -> ~1.5m
+    officePrinter:      1 / 65,    // ~120  -> ~0.6-1.8m footprint
+    rustyFileCabinet:   1 / 130,   // ~62-214 -> ~0.5-1.6m
+    whiteboardAnimated: 1 / 3.4,   // ~10m tall -> ~1.9m tall wall-mounted board (visual model only, no collider)
+    whiteboard:         1 / 3.4,
+    coffeeMachine:      1 / 2.6,   // ~2.9m tall -> ~1.1m countertop appliance
+  },
+
   // Player controller tuning
   player: {
     height: 1.75,
