@@ -85,7 +85,7 @@ class PlayerController {
 
     for (const dir of dirs) {
       raycaster.set(rayOrigin, dir);
-      const hits = raycaster.intersectObjects(colliders, false);
+      const hits = raycaster.intersectObjects(colliders, true);
       if (hits.length > 0 && hits[0].distance < radius) {
         const push = radius - hits[0].distance;
         nextPos.x -= dir.x * push;
@@ -99,7 +99,7 @@ class PlayerController {
     const colliders = this.getColliders ? this.getColliders() : [];
     const raycaster = new THREE.Raycaster();
     raycaster.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0));
-    const hits = raycaster.intersectObjects(colliders, false);
+    const hits = raycaster.intersectObjects(colliders, true);
     if (hits.length > 0) return hits[0].point.y;
     return 0; // fallback ground plane
   }
@@ -137,7 +137,7 @@ class PlayerController {
     const targetSpeed = this.isCrouching ? cfg.crouchSpeed : (this.isSprinting ? cfg.sprintSpeed : cfg.walkSpeed);
 
     const forward = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).multiplyScalar(-1);
-    const right = new THREE.Vector3(Math.sin(this.yaw + Math.PI / 2), 0, Math.cos(this.yaw + Math.PI / 2)).multiplyScalar(-1);
+    const right = new THREE.Vector3(Math.sin(this.yaw + Math.PI / 2), 0, Math.cos(this.yaw + Math.PI / 2));
 
     const wishDir = new THREE.Vector3()
       .addScaledVector(forward, -iz)
