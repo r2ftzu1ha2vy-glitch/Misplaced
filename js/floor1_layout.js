@@ -142,6 +142,7 @@ class Floor1Layout {
         cubicle.position.set(x, 0, z);
         cubicle.rotation.y = (r % 2 === 0) ? 0 : Math.PI;
         group.add(cubicle);
+        this._addCollider(cubicle);
 
         // Desk + monitor/computer inside every other cubicle for variation
         if ((r + c) % 2 === 0) {
@@ -149,15 +150,17 @@ class Floor1Layout {
           desk.position.set(x, 0, z + 0.3);
           desk.rotation.y = cubicle.rotation.y;
           group.add(desk);
+          this._addCollider(desk);
 
+          const deskTopY = (desk.userData.footprint && desk.userData.footprint.height) || 0.75;
           const computerKey = (r + c) % 4 === 0 ? "retroComputer" : "psxComputer";
           const computer = assets.get(computerKey);
-          computer.position.set(x, 0.75, z + 0.25);
+          computer.position.set(x, deskTopY, z + 0.25);
           computer.rotation.y = cubicle.rotation.y;
           group.add(computer);
 
           const kb = assets.get("keyboard");
-          kb.position.set(x, 0.75, z + 0.5);
+          kb.position.set(x, deskTopY, z + 0.5);
           kb.rotation.y = cubicle.rotation.y;
           group.add(kb);
         } else {
@@ -173,6 +176,7 @@ class Floor1Layout {
           const cabinet = assets.get(cabinetKey);
           cabinet.position.set(startX - cell * 0.85, 0, z);
           group.add(cabinet);
+          this._addCollider(cabinet);
         }
       }
     }
@@ -219,6 +223,7 @@ class Floor1Layout {
       const desk = assets.get("deskSet");
       desk.position.set(-8 + i * 1.6, 0, z + 2);
       group.add(desk);
+      this._addCollider(desk);
 
       const chair = assets.get("officeChair");
       chair.position.set(-8 + i * 1.6, 0, z + 3);
@@ -231,10 +236,12 @@ class Floor1Layout {
     const printer = assets.get("officePrinter");
     printer.position.set(2, 0, z + 5.5);
     group.add(printer);
+    this._addCollider(printer);
 
     const coffee = assets.get("coffeeMachine");
-    coffee.position.set(4, 0.9, z + 5.5);
+    coffee.position.set(4, 0, z + 5.5);
     group.add(coffee);
+    this._addCollider(coffee);
     atmosphere.registerObject(coffee);
 
     // A standalone whiteboard near the printer alcove for a second work area
