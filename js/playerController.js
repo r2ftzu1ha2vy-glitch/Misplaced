@@ -127,7 +127,7 @@ class PlayerController {
     const lookZone = document.getElementById("touchLookZone");
     let lookTouchId = null;
     let lastX = 0, lastY = 0;
-    const touchSensitivity = this.cfg.sensitivity * 2.2; // touch drags cover less pixel distance than mouse movementX
+    const touchSensitivity = this.cfg.sensitivity * this.cfg.touchSensitivityMultiplier;
 
     lookZone.addEventListener("touchstart", (e) => {
       const t = e.changedTouches[0];
