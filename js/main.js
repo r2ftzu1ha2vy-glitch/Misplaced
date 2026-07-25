@@ -153,7 +153,7 @@
     startBtn.addEventListener("click", () => {
       titlecard.style.opacity = "0";
       setTimeout(() => (titlecard.style.display = "none"), 1200);
-      renderer.domElement.requestPointerLock();
+      if (!("ontouchstart" in window)) renderer.domElement.requestPointerLock();
       start();
     });
   });
