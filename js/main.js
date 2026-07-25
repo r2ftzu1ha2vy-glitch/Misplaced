@@ -46,12 +46,12 @@
 
     window.addEventListener("resize", onResize);
 
-    // Base ambient — kept very low; fixtures provide the real light
+    // Base ambient — kept low; fixtures provide the real light
     const ambient = new THREE.AmbientLight(0x8a8f94, GAME_CONFIG.atmosphere.ambientIntensity);
     scene.add(ambient);
 
     // A faint hemisphere light so unlit areas aren't pure black silhouettes
-    const hemi = new THREE.HemisphereLight(0x4a4e55, 0x0a0a0a, 0.08);
+    const hemi = new THREE.HemisphereLight(0x4a4e55, 0x0a0a0a, 0.18);
     scene.add(hemi);
 
     clock = new THREE.Clock();
