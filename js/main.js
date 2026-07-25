@@ -35,10 +35,16 @@
     );
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Capped at 1.5 instead of 2 — on high-DPI/retina screens a cap of 2
+    // was quietly forcing the GPU to shade up to 4x the actual screen
+    // pixels every frame, which is one of the more common causes of
+    // "laggy" performance that isn't visible in any profiler timeline.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // No light in the level ever casts a shadow (see lightingSystem /
+    // roomTiles), so leaving the shadow map on just made the renderer do
+    // shadow-related bookkeeping for zero visual benefit.
+    renderer.shadowMap.enabled = false;
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.95;
