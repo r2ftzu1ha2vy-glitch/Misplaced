@@ -56,6 +56,16 @@ class LightingSystem {
     });
   }
 
+  /** Removes a previously-registered fixture (by the same `light` reference
+   *  passed to registerFixture). Needed once rooms can be re-furnished in
+   *  place (persistent-shell streaming) instead of only ever being torn
+   *  down as a whole group — otherwise every re-furnish leaks one fixture
+   *  into this.fixtures forever. */
+  unregisterFixture(light) {
+    const idx = this.fixtures.findIndex((f) => f.light === light);
+    if (idx !== -1) this.fixtures.splice(idx, 1);
+  }
+
   update(dt) {
     this._clock += dt;
     const atmo = GAME_CONFIG.atmosphere;
