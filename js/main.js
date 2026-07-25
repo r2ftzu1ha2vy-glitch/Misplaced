@@ -207,7 +207,15 @@
     startBtn.addEventListener("click", () => {
       titlecard.style.opacity = "0";
       setTimeout(() => (titlecard.style.display = "none"), 1200);
-      fadeOutMenuMusic(1500);
+      // Autoplay on page load is usually blocked, so tryPlayMenuMusic()
+      // may not have actually started anything yet — this click is a
+      // real user gesture, so play() is guaranteed to work here. Fading
+      // it out in the SAME tick as starting it made the music start and
+      // finish fading to silence almost simultaneously, which was
+      // effectively inaudible. Giving play() a beat to actually kick in
+      // before fading fixes that.
+      tryPlayMenuMusic();
+      setTimeout(() => fadeOutMenuMusic(1500), 50);
       if (!("ontouchstart" in window)) renderer.domElement.requestPointerLock();
       start();
     });
