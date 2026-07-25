@@ -26,7 +26,11 @@ class LightingSystem {
       mesh,
       seed,
       baseIntensity,
-      nextEventAt: this._clock + Utils.randRange(
+      // Give every fixture a guaranteed calm period on spawn/load, on
+      // top of the normal randomized interval, so the player never
+      // opens their eyes into a coin-flip blackout before they've even
+      // gotten their bearings in a brand-new room.
+      nextEventAt: this._clock + GAME_CONFIG.atmosphere.flickerGraceSeconds + Utils.randRange(
         GAME_CONFIG.atmosphere.flickerCheckIntervalMin,
         GAME_CONFIG.atmosphere.flickerCheckIntervalMax
       ),
@@ -58,7 +62,10 @@ class LightingSystem {
         if (f.eventKind === "strobe") {
           intensityMul = (Math.sin(this._clock * 40) > 0) ? 1.4 : 0.05;
         } else if (f.eventKind === "blackout") {
-          intensityMul = 0.02;
+          // Not a true zero — reads as "failing fixture" rather than
+          // "fixture doesn't exist," keeping the room just barely
+          // navigable through the event instead of going pitch black.
+          intensityMul = 0.12;
         }
         if (this._clock >= f.eventUntil) {
           f.eventKind = null;
@@ -68,6 +75,8 @@ class LightingSystem {
           );
         }
       }
+
+      intensityMul = Utils.clamp(intensityMul, 0, 1.5);
 
       f.light.intensity = f.baseIntensity * intensityMul;
 
