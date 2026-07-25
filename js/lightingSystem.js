@@ -21,9 +21,30 @@ class LightingSystem {
 
   registerFixture(light, mesh, baseIntensity = 1.2) {
     const seed = Math.random() * 1000;
+
+    // Walk the fixture's mesh hierarchy ONCE at registration and cache the
+    // handful of emissive materials that actually need per-frame updates,
+    // instead of calling mesh.traverse() on every fixture every frame
+    // (this was the single biggest CPU cost in the flicker loop — with
+    // dozens of fixtures streamed in at once it added up to hundreds of
+    // full tree-walks per second for no reason, since the tree never
+    // changes after the fixture is built).
+    const emissiveMats = [];
+    if (mesh) {
+      mesh.traverse((n) => {
+        if (n.isMesh && n.material) {
+          const mats = Array.isArray(n.material) ? n.material : [n.material];
+          mats.forEach((m) => {
+            if (m && "emissiveIntensity" in m) emissiveMats.push(m);
+          });
+        }
+      });
+    }
+
     this.fixtures.push({
       light,
       mesh,
+      emissiveMats,
       seed,
       baseIntensity,
       nextEventAt: this._clock + Utils.randRange(
@@ -71,12 +92,8 @@ class LightingSystem {
 
       f.light.intensity = f.baseIntensity * intensityMul;
 
-      if (f.mesh) {
-        f.mesh.traverse((n) => {
-          if (n.isMesh && n.material && "emissiveIntensity" in n.material) {
-            n.material.emissiveIntensity = intensityMul;
-          }
-        });
+      for (let i = 0; i < f.emissiveMats.length; i++) {
+        f.emissiveMats[i].emissiveIntensity = intensityMul;
       }
     }
   }
