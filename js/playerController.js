@@ -64,6 +64,121 @@ class PlayerController {
       this.pitch -= e.movementY * this.cfg.sensitivity;
       this.pitch = Utils.clamp(this.pitch, -Math.PI / 2 + 0.05, Math.PI / 2 - 0.05);
     });
+
+    if ("ontouchstart" in window) {
+      document.body.classList.add("is-touch");
+      this._bindTouchInputs();
+    }
+  }
+
+  /** Touch controls feed the exact same this.keys booleans + yaw/pitch
+   *  that keyboard/mouse use, so update() needs no touch-specific logic
+   *  at all — joystick maps to WASD, drag-look maps to mouse-look,
+   *  buttons map to Shift/Ctrl/Space. */
+  _bindTouchInputs() {
+    this.locked = true; // no pointer lock on mobile — treat as always "active"
+
+    // --- Virtual joystick (movement) ---
+    const zone = document.getElementById("touchJoystickZone");
+    const base = document.getElementById("joystickBase");
+    const knob = document.getElementById("joystickKnob");
+    let joyTouchId = null;
+    let baseCenter = { x: 0, y: 0 };
+    const maxRadius = 45;
+
+    const resetJoystick = () => {
+      this.keys["KeyW"] = this.keys["KeyA"] = this.keys["KeyS"] = this.keys["KeyD"] = false;
+      if (knob) knob.style.transform = "translate(32px, -32px)";
+    };
+
+    zone.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      joyTouchId = t.identifier;
+      const rect = base.getBoundingClientRect();
+      baseCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+
+    zone.addEventListener("touchmove", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== joyTouchId) continue;
+        let dx = t.clientX - baseCenter.x;
+        let dy = t.clientY - baseCenter.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > maxRadius) { dx = (dx / dist) * maxRadius; dy = (dy / dist) * maxRadius; }
+        if (knob) knob.style.transform = `translate(${32 + dx}px, ${-32 + dy}px)`;
+
+        const deadzone = 10;
+        this.keys["KeyW"] = dy < -deadzone;
+        this.keys["KeyS"] = dy > deadzone;
+        this.keys["KeyA"] = dx < -deadzone;
+        this.keys["KeyD"] = dx > deadzone;
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    zone.addEventListener("touchend", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier === joyTouchId) { joyTouchId = null; resetJoystick(); }
+      }
+    });
+    zone.addEventListener("touchcancel", () => { joyTouchId = null; resetJoystick(); });
+
+    // --- Look drag (right side of screen) ---
+    const lookZone = document.getElementById("touchLookZone");
+    let lookTouchId = null;
+    let lastX = 0, lastY = 0;
+    const touchSensitivity = this.cfg.sensitivity * 2.2; // touch drags cover less pixel distance than mouse movementX
+
+    lookZone.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      lookTouchId = t.identifier;
+      lastX = t.clientX; lastY = t.clientY;
+    });
+    lookZone.addEventListener("touchmove", (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== lookTouchId) continue;
+        const dx = t.clientX - lastX;
+        const dy = t.clientY - lastY;
+        lastX = t.clientX; lastY = t.clientY;
+        this.yaw -= dx * touchSensitivity;
+        this.pitch -= dy * touchSensitivity;
+        this.pitch = Utils.clamp(this.pitch, -Math.PI / 2 + 0.05, Math.PI / 2 - 0.05);
+      }
+      e.preventDefault();
+    }, { passive: false });
+    lookZone.addEventListener("touchend", (e) => {
+      for (const t of e.changedTouches) if (t.identifier === lookTouchId) lookTouchId = null;
+    });
+    lookZone.addEventListener("touchcancel", () => { lookTouchId = null; });
+
+    // --- Buttons: sprint (hold), crouch (toggle-hold), jump (tap) ---
+    const bindHoldButton = (id, keyCode) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const setActive = (v) => {
+        this.keys[keyCode] = v;
+        el.classList.toggle("active", v);
+      };
+      el.addEventListener("touchstart", (e) => { setActive(true); e.preventDefault(); }, { passive: false });
+      el.addEventListener("touchend", () => setActive(false));
+      el.addEventListener("touchcancel", () => setActive(false));
+    };
+
+    bindHoldButton("btnSprint", "ShiftLeft");
+    bindHoldButton("btnCrouch", "ControlLeft");
+
+    const jumpBtn = document.getElementById("btnJump");
+    if (jumpBtn) {
+      jumpBtn.addEventListener("touchstart", (e) => {
+        this.keys["Space"] = true;
+        jumpBtn.classList.add("active");
+        e.preventDefault();
+      }, { passive: false });
+      jumpBtn.addEventListener("touchend", () => {
+        this.keys["Space"] = false;
+        jumpBtn.classList.remove("active");
+      });
+    }
   }
 
   /** Raycast-based ground/wall collision resolution (simple + robust for a first pass). */
