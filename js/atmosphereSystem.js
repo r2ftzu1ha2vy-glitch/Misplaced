@@ -59,6 +59,29 @@ class AtmosphereSystem {
     });
   }
 
+  /**
+   * Called when a tile unloads. Both eligibleObjects (nudge candidates)
+   * and toppleTraps reference meshes that belong to a specific tile's
+   * group — without this, every tile ever streamed in leaves its chairs/
+   * plants/cabinets registered forever, even after their geometry is
+   * disposed and the tile is long gone. toppleTraps in particular is
+   * walked and distance-checked every single frame, so that array
+   * growing without bound as the player wanders is a real, worsening
+   * per-frame cost — not just wasted memory.
+   */
+  forgetGroup(group) {
+    const isInGroup = (obj) => {
+      let n = obj;
+      while (n) {
+        if (n === group) return true;
+        n = n.parent;
+      }
+      return false;
+    };
+    this.eligibleObjects = this.eligibleObjects.filter((e) => !isInGroup(e.obj));
+    this.toppleTraps = this.toppleTraps.filter((t) => !isInGroup(t.obj));
+  }
+
   update(dt, playerPosition) {
     this._updateToppleTraps(dt, playerPosition);
 
