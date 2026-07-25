@@ -119,12 +119,75 @@
     font-size: 0.8em; letter-spacing: 0.2em; color: var(--ui-dim);
     max-width: 480px; text-align: center; line-height: 1.8;
   }
+
+  #titlecard h1.imgtitle {
+    width: min(80vw, 480px);
+    height: auto;
+    margin: 0 0 4px 0;
+  }
+
+  /* ---------------- Mobile touch controls ---------------- */
+  #touchControls {
+    position: fixed; inset: 0; z-index: 15;
+    pointer-events: none; display: none;
+  }
+  body.is-touch #touchControls { display: block; }
+  body.is-touch #pausehint { display: none; }
+
+  #touchLookZone {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 40%;
+    pointer-events: auto;
+  }
+
+  #touchJoystickZone {
+    position: absolute; left: 0; bottom: 0; top: 0; width: 40%;
+    pointer-events: auto;
+  }
+  #joystickBase {
+    position: absolute; width: 120px; height: 120px;
+    left: 30px; bottom: 30px;
+    background-image: url("assets/ui/joystick_base.png");
+    background-size: contain; background-repeat: no-repeat;
+    opacity: 0.7; pointer-events: none;
+  }
+  #joystickKnob {
+    position: absolute; width: 56px; height: 56px;
+    background-image: url("assets/ui/joystick_knob.png");
+    background-size: contain; background-repeat: no-repeat;
+    left: 30px; bottom: 30px;
+    transform: translate(32px, -32px);
+    pointer-events: none;
+  }
+
+  .touchBtn {
+    position: absolute; pointer-events: auto;
+    background-size: contain; background-repeat: no-repeat; background-position: center;
+    opacity: 0.75; transition: opacity 0.1s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .touchBtn.active { opacity: 1; transform: scale(0.92); }
+
+  #btnJump {
+    width: 74px; height: 74px;
+    right: 28px; bottom: 130px;
+    background-image: url("assets/ui/jump.png");
+  }
+  #btnSprint {
+    width: 64px; height: 64px;
+    right: 110px; bottom: 40px;
+    background-image: url("assets/ui/sprint.png");
+  }
+  #btnCrouch {
+    width: 64px; height: 64px;
+    right: 28px; bottom: 40px;
+    background-image: url("assets/ui/crouch.png");
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="titlecard">
-    <h1>MISPLACED</h1>
+    <img class="imgtitle" src="assets/ui/misplaced_title.png" alt="MISPLACED" />
     <div class="sub">FLOOR 01 — OFFICE COMPLEX</div>
     <div class="prompt" id="startBtn">CLICK TO ENTER</div>
     <div class="loading-status" id="loadingStatus"></div>
@@ -143,6 +206,17 @@
   </div>
 
   <div id="errorlog"></div>
+
+  <div id="touchControls">
+    <div id="touchJoystickZone">
+      <div id="joystickBase"></div>
+      <div id="joystickKnob"></div>
+    </div>
+    <div id="touchLookZone"></div>
+    <div class="touchBtn" id="btnJump"></div>
+    <div class="touchBtn" id="btnSprint"></div>
+    <div class="touchBtn" id="btnCrouch"></div>
+  </div>
 
   <div id="winscreen">
     <h1>FLOOR CLEARED</h1>
