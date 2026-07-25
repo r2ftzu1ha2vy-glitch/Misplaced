@@ -78,7 +78,7 @@ const GAME_CONFIG = {
     fogColor: 0x0a0a0c,
     fogNear: 2,
     fogFar: 26,
-    ambientIntensity: 0.06,
+    ambientIntensity: 0.14,
     flickerCheckIntervalMin: 4,
     flickerCheckIntervalMax: 11,
     flickerEventDurationMin: 0.15,
