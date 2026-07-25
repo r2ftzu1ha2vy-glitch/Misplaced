@@ -31,7 +31,6 @@ const GAME_CONFIG = {
     plasticBin:         "plastic_round_bin.glb",
     psxComputer:        "psx_retro_computer.glb",
     retroComputer:      "retro_computer.glb",
-    rustyFileCabinet:   "rusty_filing_cabinet.glb",
     scp096:             "scp-096_-_true_hd_sound_mod.glb", // model only for now, audio skipped
     whiteboard:         "whiteboard.glb",
   },
@@ -97,7 +96,14 @@ const GAME_CONFIG = {
     wallHeight: 2.7,
     doorWidth: 2.4,
     wallThickness: 0.25,
-    streamRadius: 2,       // tiles loaded in each direction around player's current tile
+    // Tiles loaded in each direction around the player's current tile.
+    // At radius 2 that's a 5x5 = 25 tiles loaded at once, each with its
+    // own furniture and ceiling lights — but atmosphere.fogFar (26) already
+    // makes anything past ~1.3 tiles invisible, so the outer ring was
+    // being fully built, lit, and rendered for nothing. Radius 1 (9 tiles)
+    // still leaves a comfortable buffer past the fog line for seamless
+    // streaming, at roughly a third of the geometry/light cost.
+    streamRadius: 1,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
     minTilesFromSpawnForExit: 6, // how many tiles out before an exit/stairwell room can appear
     exitChancePerEligibleTile: 0.12, // once eligible, chance any given new tile becomes the exit
