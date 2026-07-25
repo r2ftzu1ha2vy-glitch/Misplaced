@@ -35,6 +35,15 @@
     mix-blend-mode: normal;
   }
 
+  #cameraOverlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 6;
+    background-image: url("assets/ui/camera_overlay.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.9;
+  }
+
   #hud {
     position: fixed; left: 22px; bottom: 20px; z-index: 10;
     color: var(--ui-dim); font-size: 11px; letter-spacing: 0.08em;
@@ -124,6 +133,7 @@
 
   <div id="crosshair"></div>
   <div id="vignette"></div>
+  <div id="cameraOverlay"></div>
   <div id="pausehint">ESC — Menu &nbsp;|&nbsp; Click to resume</div>
 
   <div id="hud">
