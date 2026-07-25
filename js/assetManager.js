@@ -67,8 +67,13 @@ class AssetManager {
   _prepModel(root, key) {
     root.traverse((node) => {
       if (node.isMesh) {
-        node.castShadow = true;
-        node.receiveShadow = true;
+        // No light in the scene ever casts a shadow (see roomTiles.js —
+        // fixture PointLights are created with castShadow = false), so
+        // flagging every single furniture mesh as a shadow caster/receiver
+        // was pure dead weight for the renderer's shadow pass. Leaving
+        // these off entirely is free performance.
+        node.castShadow = false;
+        node.receiveShadow = false;
         if (node.material) {
           // Normalize material response to our low-light horror scene
           const mats = Array.isArray(node.material) ? node.material : [node.material];
@@ -126,22 +131,33 @@ class AssetManager {
   /**
    * Returns a fresh clone of a loaded model, safe to add to the scene
    * and transform independently.
+   *
+   * cloneMaterials defaults to false: most instances (desks, chairs,
+   * cabinets, plants...) never touch their material at runtime, so they
+   * can all safely share the one material instance loaded from the glTF.
+   * That lets Three.js batch/sort draw calls by material instead of
+   * juggling a unique material (and unique shader program state) per
+   * instance, which was a major source of the lag with dozens of tiles
+   * streamed in. Pass cloneMaterials = true only for objects that need
+   * independent per-instance material state, like the ceiling light
+   * fixtures whose emissive intensity flickers independently.
    */
-  get(key) {
+  get(key, cloneMaterials = false) {
     const src = this.cache[key];
     if (!src) {
       Utils.logError(`Requested unknown asset key "${key}" (not in cache).`);
       return this._makePlaceholder(key);
     }
     const clone = src.clone(true);
-    // Clone materials too so per-instance tweaks (e.g. emissive flicker) don't leak across instances
-    clone.traverse((node) => {
-      if (node.isMesh && node.material) {
-        node.material = Array.isArray(node.material)
-          ? node.material.map((m) => m.clone())
-          : node.material.clone();
-      }
-    });
+    if (cloneMaterials) {
+      clone.traverse((node) => {
+        if (node.isMesh && node.material) {
+          node.material = Array.isArray(node.material)
+            ? node.material.map((m) => m.clone())
+            : node.material.clone();
+        }
+      });
+    }
     return clone;
   }
 
