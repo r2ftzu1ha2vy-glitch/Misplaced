@@ -11,6 +11,7 @@
 (function () {
   let scene, camera, renderer, clock;
   let player, lighting, atmosphere, roomStreamer;
+  let audioListener;
   let colliders = [];
   let running = false;
   let hasWon = false;
@@ -33,6 +34,12 @@
       0.05,
       streamEdge + 10
     );
+
+    // Positional audio listener lives on the camera so 3D sounds (like a
+    // toppling cabinet) pan/attenuate naturally with the player's position
+    // and facing.
+    audioListener = new THREE.AudioListener();
+    camera.add(audioListener);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     // Capped at 1.5 instead of 2 — on high-DPI/retina screens a cap of 2
@@ -86,6 +93,18 @@
     });
 
     if (statusEl) statusEl.textContent = "Assembling floor…";
+
+    // Load the cabinet-topple sound in parallel with level assembly — it's
+    // small, and we don't want a slow audio fetch to hold up the loading
+    // screen. atmosphere.update()/topple logic already guards against the
+    // buffer not being ready yet, so this can resolve whenever it resolves.
+    const audioLoader = new THREE.AudioLoader();
+    audioLoader.load(
+      "assets/audio/fall.mp3",
+      (buffer) => atmosphere.setFallSound(audioListener, buffer),
+      undefined,
+      (err) => Utils.logError("Failed to load fall.mp3: " + (err && err.message ? err.message : err))
+    );
 
     roomStreamer = new RoomStreamer(scene, assets, lighting, atmosphere, onWin);
     const result = roomStreamer.buildInitial();
