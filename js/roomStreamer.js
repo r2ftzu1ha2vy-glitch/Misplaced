@@ -1,16 +1,24 @@
 /**
  * roomStreamer.js
  * ---------------------------------------------------------------
- * Builds Floor 1 as an infinite grid of room tiles (see roomTiles.js)
- * streamed in/out around the player's current position, instead of
- * one fixed-size room. Every tile is deterministic (same grid coord
- * always builds the same room), so streaming a tile back out and
- * back in later produces an identical result.
+ * Floor 1 as a FIXED grid of persistent room "shells" (floor, walls,
+ * ceiling — built once each, never rebuilt) that re-centers on the
+ * player's current tile whenever they cross into a new room. Only
+ * furniture + room-specific dressing is swapped per tile; the shell
+ * geometry itself is reused for the life of the game.
  *
- * The spawn tile (0,0) is always a Cubicle Farm. An "exit" tile
- * (stairwell to Floor 2) can appear once the player has wandered at
- * least `minTilesFromSpawnForExit` tiles from spawn; exactly one
- * exit tile is ever placed for the whole run.
+ * Grid size is (2*radius+1)^2 shells — e.g. radius 1 = 3x3 = 9 shells,
+ * always exactly covering the player's tile plus its ring of
+ * neighbors. When the player moves into a new tile, every shell's
+ * *slot* (its position relative to the player) shifts so the tile the
+ * player is now standing in becomes the middle slot again — the shell
+ * that no longer has a place in the new 3x3 window gets re-skinned
+ * and re-furnished as whatever the new window's edge tile needs,
+ * instead of being destroyed and a new one instantiated.
+ *
+ * Rooms are still deterministic (same grid coord -> same room), via
+ * the same seeded RNG approach as before, so revisiting a tile later
+ * reproduces it exactly.
  * ---------------------------------------------------------------
  */
 
@@ -22,30 +30,18 @@ class RoomStreamer {
     this.atmosphere = atmosphere;
     this.onWin = onWin;
 
-    this.tiles = new Map();      // "x,z" -> { group, colliders, exitTrigger, tx, tz }
-    this.colliders = [];         // flat list kept in sync for the player controller
-    this._colliderTiles = new Map(); // "x,z" -> colliders array reference, for fast removal
+    // slots[i] = { group, floorMesh, furnitureGroup, colliders, exitTrigger, tx, tz, roomType,
+    //              sdx, sdz }  where sdx/sdz is the slot's FIXED offset from center (never changes).
+    this.slots = [];
+    this._slotByCoord = new Map(); // "tx,tz" -> slot, only valid tiles currently occupying a slot
+
+    this.colliders = []; // flat list kept in sync for the player controller
 
     this.exitPlaced = false;
     this.exitTileCoord = null;
 
-    this._lastCenterTx = null;
-    this._lastCenterTz = null;
-
-    // Tiles that are wanted but not yet built get queued here instead of
-    // built immediately. Crossing into a new area used to call _buildTile
-    // for every newly-needed tile back-to-back in one frame — each one
-    // clones GLBs, builds walls/colliders, registers lights — so the
-    // frame you actually cross a boundary could spike hugely. Now update()
-    // builds a small batch off this queue per frame instead, turning one
-    // big freeze into several unnoticeable small ones.
-    this._buildQueue = [];
-    this._queuedSet = new Set();
-    this.tilesBuiltPerFrame = 1;
-    this.framesBetweenBuilds = 5; // "5 frames later" spacing between each queued build
-    this._frameCounter = 0;
-    this._moveDirX = 0; // last known travel direction, for left/right/front priority
-    this._moveDirZ = 1;
+    this._centerTx = null;
+    this._centerTz = null;
 
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
   }
@@ -62,142 +58,112 @@ class RoomStreamer {
     return tx + "," + tz;
   }
 
-  /** Initial build: spawn tile + surrounding radius. Called once before the game starts.
-   *  Built fully synchronously (not queued) — this happens during the loading
-   *  screen, before the player can see anything, so there's no reason to
-   *  spread it out. */
+  /** Initial build: allocate the fixed grid of shells and furnish them
+   *  for the tiles around spawn. Runs during the loading screen. */
   buildInitial() {
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
-    this._streamAround(0, 0, /* immediate */ true);
-    this._lastCenterTx = 0;
-    this._lastCenterTz = 0;
+    this._allocateSlots();
+    this._centerTx = 0;
+    this._centerTz = 0;
+    this._furnishAllSlots();
     return { colliders: this.colliders, spawnPoint: this.spawnPoint };
+  }
+
+  /** Creates the fixed set of shell Groups once. Their local slot offsets
+   *  (sdx, sdz) never change again — only which tile a slot represents,
+   *  and the shell's world position, change as the player moves. */
+  _allocateSlots() {
+    const radius = GAME_CONFIG.floor1.streamRadius;
+    for (let sdx = -radius; sdx <= radius; sdx++) {
+      for (let sdz = -radius; sdz <= radius; sdz++) {
+        const shell = RoomTiles.buildReusableShell();
+        shell.group.name = `Shell_${sdx}_${sdz}`;
+        this.scene.add(shell.group);
+
+        const furnitureGroup = new THREE.Group();
+        shell.group.add(furnitureGroup);
+
+        this.slots.push({
+          group: shell.group,
+          floorMesh: shell.floorMesh,
+          shellColliders: shell.colliders,
+          furnitureGroup,
+          colliders: [],       // furniture colliders only, currently active
+          exitTrigger: null,
+          ceilingLights: [],   // THREE.Light refs, for lighting.unregisterFixture
+          tx: null,
+          tz: null,
+          roomType: null,
+          sdx, sdz,
+        });
+      }
+    }
   }
 
   /** Call every frame (cheap early-out) with the player's world position. */
   update(playerPos) {
     const { tx, tz } = this.worldToTile(playerPos.x, playerPos.z);
-    if (tx !== this._lastCenterTx || tz !== this._lastCenterTz) {
-      if (this._lastCenterTx !== null) {
-        const ddx = tx - this._lastCenterTx;
-        const ddz = tz - this._lastCenterTz;
-        if (ddx !== 0 || ddz !== 0) {
-          this._moveDirX = Math.sign(ddx) || this._moveDirX;
-          this._moveDirZ = Math.sign(ddz) || this._moveDirZ;
-        }
-      }
-      this._lastCenterTx = tx;
-      this._lastCenterTz = tz;
-      this._streamAround(tx, tz, /* immediate */ false);
+    if (tx !== this._centerTx || tz !== this._centerTz) {
+      this._centerTx = tx;
+      this._centerTz = tz;
+      this._recenter();
     }
-    this._drainBuildQueue();
-  }
-
-  /**
-   * Lower number = built sooner. The tile dead ahead in the player's
-   * travel direction is the one fog hides until they're nearly on top of
-   * it, so it's intentionally last; side neighbors are visible through
-   * open doorways much sooner and go first.
-   */
-  _buildPriority(dx, dz, centerTx, centerTz) {
-    if (dx === 0 && dz === 0) return -1; // the tile the player is standing in, always first
-    const forwardDot = dx * this._moveDirX + dz * this._moveDirZ;
-    const manhattan = Math.abs(dx) + Math.abs(dz);
-    if (forwardDot > 0) return 100 + manhattan;   // ahead — build last
-    if (forwardDot === 0) return 10 + manhattan;  // beside — build early (left/right)
-    return 20 + manhattan;                        // behind — mid priority
-  }
-
-  /** Builds up to tilesBuiltPerFrame queued tiles, but only every framesBetweenBuilds
-   *  frames — so left/right/front pop in a few frames apart instead of all at once. */
-  _drainBuildQueue() {
-    if (this._buildQueue.length === 0) return;
-    this._frameCounter = (this._frameCounter || 0) + 1;
-    if (this._frameCounter % this.framesBetweenBuilds !== 0) return;
-
-    let n = this.tilesBuiltPerFrame;
-    while (n > 0 && this._buildQueue.length > 0) {
-      const { tx, tz } = this._buildQueue.shift();
-      const key = this.tileKey(tx, tz);
-      this._queuedSet.delete(key);
-      // Might have streamed back out of range while it sat in the queue
-      // (fast player movement) — skip building tiles no one needs anymore.
-      if (!this._isWanted(tx, tz)) continue;
-      if (this.tiles.has(key)) continue;
-      this._buildTile(tx, tz);
-      n--;
-    }
-  }
-
-  _isWanted(tx, tz) {
-    const radius = GAME_CONFIG.floor1.streamRadius;
-    return Math.abs(tx - this._lastCenterTx) <= radius && Math.abs(tz - this._lastCenterTz) <= radius;
   }
 
   /** Returns true + fires onWin once if the player is standing in the exit trigger. */
   checkExitTrigger(playerPos) {
     if (!this.exitPlaced) return false;
     const key = this.tileKey(this.exitTileCoord.tx, this.exitTileCoord.tz);
-    const entry = this.tiles.get(key);
-    if (!entry || !entry.exitTrigger) return false;
+    const slot = this._slotByCoord.get(key);
+    if (!slot || !slot.exitTrigger) return false;
 
     const size = GAME_CONFIG.floor1.tileSize;
-    const worldTriggerX = entry.tx * size + entry.exitTrigger.localPoint.x;
-    const worldTriggerZ = entry.tz * size + entry.exitTrigger.localPoint.z;
+    const worldTriggerX = slot.tx * size + slot.exitTrigger.localPoint.x;
+    const worldTriggerZ = slot.tz * size + slot.exitTrigger.localPoint.z;
     const dx = playerPos.x - worldTriggerX;
     const dz = playerPos.z - worldTriggerZ;
     const dist = Math.hypot(dx, dz);
-    return dist <= entry.exitTrigger.radius;
+    return dist <= slot.exitTrigger.radius;
   }
 
-  _streamAround(centerTx, centerTz, immediate) {
-    const radius = GAME_CONFIG.floor1.streamRadius;
-    const wanted = new Set();
+  /** Re-centers the fixed grid on the new (this._centerTx, this._centerTz):
+   *  every slot's world position moves to (center + its fixed sdx/sdz),
+   *  and any slot whose new tile differs from what it was previously
+   *  showing gets re-skinned + re-furnished for that tile. Slots whose
+   *  tile hasn't changed (the vast majority when moving one tile at a
+   *  time) are left completely untouched — no geometry work at all. */
+  _recenter() {
+    const size = GAME_CONFIG.floor1.tileSize;
+    this._slotByCoord.clear();
 
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dz = -radius; dz <= radius; dz++) {
-        const tx = centerTx + dx;
-        const tz = centerTz + dz;
-        const key = this.tileKey(tx, tz);
-        wanted.add(key);
-        if (this.tiles.has(key)) continue;
+    for (const slot of this.slots) {
+      const newTx = this._centerTx + slot.sdx;
+      const newTz = this._centerTz + slot.sdz;
 
-        if (immediate) {
-          this._buildTile(tx, tz);
-        } else if (!this._queuedSet.has(key)) {
-          // Priority isn't just "closest" — the room straight ahead is
-          // the one the player can actually see coming (through the
-          // doorway), while side/behind neighbors are hidden by fog until
-          // the player is basically already in the doorway to them. So
-          // load the tile the player just moved into first, its left/right
-          // neighbors next, and anything else (including the far/front
-          // one relative to travel direction) last, spaced a few frames
-          // apart so each pop-in is spread out rather than bunched up.
-          this._queuedSet.add(key);
-          const priority = this._buildPriority(dx, dz, centerTx, centerTz);
-          this._buildQueue.push({ tx, tz, priority });
-        }
+      // Always reposition (cheap) — the shell's world slot follows the
+      // player even if its contents don't need to change.
+      slot.group.position.set(newTx * size, 0, newTz * size);
+
+      const tileChanged = slot.tx !== newTx || slot.tz !== newTz;
+      if (tileChanged) {
+        this._furnishSlot(slot, newTx, newTz);
       }
-    }
-    if (!immediate) this._buildQueue.sort((a, b) => a.priority - b.priority);
 
-    // Unload tiles outside the wanted set (never unload the exit tile
-    // once it exists, so the win room stays reachable/consistent)
-    for (const [key, entry] of this.tiles) {
-      if (wanted.has(key)) continue;
-      if (this.exitPlaced && key === this.tileKey(this.exitTileCoord.tx, this.exitTileCoord.tz)) continue;
-      this._unloadTile(key, entry);
+      this._slotByCoord.set(this.tileKey(newTx, newTz), slot);
     }
 
-    // Also drop any now-stale queued builds that fell outside the new
-    // wanted set before they ever got built.
-    if (!immediate) {
-      this._buildQueue = this._buildQueue.filter((t) => {
-        const keep = wanted.has(this.tileKey(t.tx, t.tz));
-        if (!keep) this._queuedSet.delete(this.tileKey(t.tx, t.tz));
-        return keep;
-      });
+    this._rebuildColliderList();
+  }
+
+  _furnishAllSlots() {
+    for (const slot of this.slots) {
+      const tx = this._centerTx + slot.sdx;
+      const tz = this._centerTz + slot.sdz;
+      slot.group.position.set(tx * GAME_CONFIG.floor1.tileSize, 0, tz * GAME_CONFIG.floor1.tileSize);
+      this._furnishSlot(slot, tx, tz);
+      this._slotByCoord.set(this.tileKey(tx, tz), slot);
     }
+    this._rebuildColliderList();
   }
 
   _distFromSpawnTiles(tx, tz) {
@@ -221,62 +187,82 @@ class RoomStreamer {
     return "archive";
   }
 
-  _buildTile(tx, tz) {
-    const size = GAME_CONFIG.floor1.tileSize;
+  /** Clears whatever furniture a slot currently has and rebuilds it for
+   *  (tx, tz): re-skins the shared floor material and refills the
+   *  slot's furnitureGroup, without touching wall/ceiling/floor geometry
+   *  (that part of the shell is permanent and shared across every tile
+   *  that ever occupies this slot). */
+  _furnishSlot(slot, tx, tz) {
+    this._clearSlotFurniture(slot);
+
     const seed = Utils.seedFromCoords(tx, tz);
     const rng = Utils.makeRng(seed);
-
     const roomType = this._pickRoomType(tx, tz, rng);
 
-    const group = new THREE.Group();
-    group.name = `Tile_${tx}_${tz}_${roomType}`;
-    group.position.set(tx * size, 0, tz * size);
-    this.scene.add(group);
+    // Re-skin the shared floor slab for this room type instead of
+    // rebuilding it.
+    slot.floorMesh.material = RoomTiles.floorMatForRoomType(roomType);
 
+    slot.furnitureGroup.position.set(0, 0, 0);
     let result;
     switch (roomType) {
       case "meetingRoom":
-        result = RoomTiles.buildMeetingRoom(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildMeetingRoom(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         break;
       case "breakRoom":
-        result = RoomTiles.buildBreakRoom(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildBreakRoom(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         break;
       case "serverRoom":
-        result = RoomTiles.buildServerRoom(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildServerRoom(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         break;
       case "archive":
-        result = RoomTiles.buildArchive(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildArchive(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         break;
       case "exit":
-        result = RoomTiles.buildExitRoom(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildExitRoom(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         this.exitPlaced = true;
         this.exitTileCoord = { tx, tz };
         Utils.logInfo(`Exit room placed at tile (${tx}, ${tz})`);
         break;
       case "cubicleFarm":
       default:
-        result = RoomTiles.buildCubicleFarm(group, this.assets, this.lighting, this.atmosphere, rng);
+        result = RoomTiles.buildCubicleFarm(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
         break;
     }
 
-    const key = this.tileKey(tx, tz);
-    const entry = {
-      group,
-      colliders: result.colliders || [],
-      exitTrigger: result.exitTrigger || null,
-      tx, tz,
-      roomType,
-    };
-    this.tiles.set(key, entry);
-    this._colliderTiles.set(key, entry.colliders);
-    this.colliders.push(...entry.colliders);
+    slot.tx = tx;
+    slot.tz = tz;
+    slot.roomType = roomType;
+    slot.colliders = result.colliders || [];
+    slot.exitTrigger = result.exitTrigger || null;
+
+    // Ceiling lights are added straight into furnitureGroup by
+    // addCeilingLight() (via lighting.registerFixture), so any
+    // PointLights among furnitureGroup's children are this slot's
+    // fixtures — track them so _clearSlotFurniture can unregister them
+    // next time this slot gets re-furnished.
+    slot.ceilingLights = [];
+    slot.furnitureGroup.traverse((n) => {
+      if (n.isLight) slot.ceilingLights.push(n);
+    });
   }
 
-  _unloadTile(key, entry) {
-    this._queuedSet.delete(key);
-    this.scene.remove(entry.group);
-    this.atmosphere.forgetGroup(entry.group);
-    entry.group.traverse((n) => {
+  /** Disposes this slot's current furniture (geometry/materials),
+   *  unregisters its ceiling light(s) from the lighting system, and
+   *  forgets its atmosphere-eligible objects — mirroring what the old
+   *  per-tile _unloadTile() used to do, but scoped to just the
+   *  furnitureGroup instead of the whole shell. */
+  _clearSlotFurniture(slot) {
+    if (slot.tx === null) return; // nothing built yet
+
+    for (const light of slot.ceilingLights) {
+      this.lighting.unregisterFixture(light);
+    }
+    slot.ceilingLights = [];
+
+    this.atmosphere.forgetGroup(slot.furnitureGroup);
+
+    slot.furnitureGroup.traverse((n) => {
       if (n.isMesh) {
         n.geometry && n.geometry.dispose && n.geometry.dispose();
         if (n.material) {
@@ -285,11 +271,20 @@ class RoomStreamer {
         }
       }
     });
+    while (slot.furnitureGroup.children.length) {
+      slot.furnitureGroup.remove(slot.furnitureGroup.children[0]);
+    }
 
-    const removeSet = new Set(entry.colliders);
-    this.colliders = this.colliders.filter((c) => !removeSet.has(c));
+    slot.colliders = [];
+    slot.exitTrigger = null;
+  }
 
-    this.tiles.delete(key);
-    this._colliderTiles.delete(key);
+  _rebuildColliderList() {
+    const list = [];
+    for (const slot of this.slots) {
+      list.push(...slot.shellColliders); // floor + walls, shared per slot
+      list.push(...slot.colliders);      // current furniture
+    }
+    this.colliders = list;
   }
 }
