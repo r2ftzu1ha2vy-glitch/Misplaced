@@ -239,9 +239,14 @@ const RoomTiles = (() => {
     }
 
     const whiteboard = assets.get(rng() < 0.5 ? "whiteboardAnimated" : "whiteboard");
-    whiteboard.position.set(0, 1.3, -T() / 2 + WT() + 0.02);
+    // y=0, not a manual lift — assetManager._prepModel already re-roots
+    // every model's origin to its own floor contact point, same as every
+    // other prop below. The old y=1.3 offset pushed this rolling-stand
+    // whiteboard up through the wall opening/ceiling.
+    whiteboard.position.set(0, 0, -T() / 2 + WT() + 0.02);
     whiteboard.rotation.y = 0;
     group.add(whiteboard);
+    colliders.push(whiteboard);
 
     const plant = assets.get("snakePlant");
     plant.position.set(T() / 2 - 1, 0, -T() / 2 + 1);
