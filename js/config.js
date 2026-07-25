@@ -41,14 +41,7 @@ const GAME_CONFIG = {
   // a "desk" the size of a football field). Uniform per-key correction
   // applied once at load time, before anything is positioned. Keys not
   // listed here default to 1 (already correct scale).
-  modelScaleFixes: {
-    deskSet:            1 / 1000,  // ~1500 -> ~1.5m
-    officePrinter:      1 / 65,    // ~120  -> ~0.6-1.8m footprint
-    rustyFileCabinet:   1 / 130,   // ~62-214 -> ~0.5-1.6m
-    whiteboardAnimated: 1 / 3.4,   // ~10m tall -> ~1.9m tall wall-mounted board (visual model only, no collider)
-    whiteboard:         1 / 3.4,
-    coffeeMachine:      1 / 2.6,   // ~2.9m tall -> ~1.1m countertop appliance
-  },
+  modelScaleFixes: {},
 
   // Player controller tuning
   player: {
@@ -94,10 +87,19 @@ const GAME_CONFIG = {
     rareEventIntervalMax: 70,
   },
 
-  // Floor 1 grid — room size used to lay out the hand-authored plan
+  // Floor 1 — infinite tiled office. The floor is built from square
+  // "rooms" (tiles) on a grid, each with doorways on all 4 sides so
+  // any room type can connect to any neighbor. Rooms are streamed in
+  // around the player and torn down once far behind, so the level has
+  // no hard edges.
   floor1: {
-    cellSize: 3.2,        // meters per grid cell
+    tileSize: 20,          // meters per room tile (X and Z)
     wallHeight: 2.7,
-    corridorWidth: 2,
+    doorWidth: 2.4,
+    wallThickness: 0.25,
+    streamRadius: 2,       // tiles loaded in each direction around player's current tile
+    streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
+    minTilesFromSpawnForExit: 6, // how many tiles out before an exit/stairwell room can appear
+    exitChancePerEligibleTile: 0.12, // once eligible, chance any given new tile becomes the exit
   },
 };
