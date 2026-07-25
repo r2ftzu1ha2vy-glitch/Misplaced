@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>MISPLACED — Floor 1: Office Complex</title>
 <style>
   :root{
@@ -188,6 +188,51 @@
     width: 64px; height: 64px;
     right: 28px; bottom: 40px;
     background-image: url("assets/ui/crouch.png");
+  }
+
+  /* ---------------- Mobile / small-screen fit ---------------- */
+  @media (max-width: 680px), (max-height: 480px) {
+    #titlecard h1.imgtitle { width: min(70vw, 320px); }
+    #titlecard .sub { font-size: 0.65em; letter-spacing: 0.22em; margin-bottom: 26px; }
+    #titlecard .prompt { font-size: 0.8em; padding: 9px 18px; }
+    #titlecard .loading-status { font-size: 0.65em; margin-top: 14px; }
+    #titlecard .barwrap { width: 70vw; max-width: 260px; }
+
+    #winscreen h1 { font-size: 1.4em; letter-spacing: 0.14em; padding: 0 16px; text-align: center; }
+    #winscreen .sub { font-size: 0.72em; max-width: 86vw; padding: 0 16px; }
+
+    #hud { left: 14px; bottom: env(safe-area-inset-bottom, 0px); font-size: 9px; }
+    #hud .stamina-bar { width: 90px; }
+
+    #pausehint { font-size: 9px; top: calc(env(safe-area-inset-top, 0px) + 10px); text-align: center; padding: 0 10px; }
+
+    #errorlog { max-width: 60vw; font-size: 9px; right: env(safe-area-inset-right, 8px); }
+  }
+
+  /* Touch layout also gets its own pass so the HUD/pause hint never sit
+     under the notch or overlap the joystick/buttons, independent of
+     screen-size breakpoints above (a touch device can still be large,
+     e.g. a tablet). */
+  body.is-touch #hud {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+    left: calc(env(safe-area-inset-left, 0px) + 14px);
+  }
+  body.is-touch #errorlog {
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    right: calc(env(safe-area-inset-right, 0px) + 10px);
+  }
+  body.is-touch #titlecard .prompt {
+    padding: 14px 28px; /* larger tap target than the mouse/keyboard version */
+  }
+
+  @media (max-width: 680px) and (orientation: landscape) {
+    /* Landscape phones are short — the vertical title stack needs to
+       shrink further so the "CLICK TO ENTER" prompt + loading bar don't
+       get pushed off the bottom edge. */
+    #titlecard h1.imgtitle { width: min(38vw, 240px); }
+    #titlecard .sub { margin-bottom: 14px; }
+    #titlecard .loading-status { margin-top: 8px; }
+    #titlecard .barwrap { margin-top: 8px; }
   }
 </style>
 </head>
