@@ -33,7 +33,7 @@ const GAME_CONFIG = {
     retroComputer:      "retro_computer.glb",
     scp096:             "scp-096_-_true_hd_sound_mod.glb", // model only for now, audio skipped
     whiteboard:         "whiteboard.glb",
-    exitDoor:           "door.glb",
+    exitDoor:           "metal_door.glb",
   },
 
   // A handful of these Sketchfab/FBX exports bake in wrong real-world
