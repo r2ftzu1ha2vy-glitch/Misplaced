@@ -352,12 +352,15 @@ const RoomTiles = (() => {
     const colliders = [];
     buildShell(group, mats().floor, colliders);
 
+    // Positions kept off the doorway centerline (door gap is centered on
+    // each wall, DOOR() wide) — cabinets used to sit almost exactly in the
+    // opening on the ±Z walls and could visually/physically block them.
     const positions = [
-      [-T() / 2 + 0.8, -T() / 2 + 1.5],
+      [-T() / 2 + 0.8, -T() / 2 + 2.6],
       [-T() / 2 + 0.8, 0],
-      [-T() / 2 + 0.8, T() / 2 - 1.5],
-      [T() / 2 - 0.8, -T() / 2 + 1.5],
-      [T() / 2 - 0.8, T() / 2 - 1.5],
+      [-T() / 2 + 0.8, T() / 2 - 2.6],
+      [T() / 2 - 0.8, -T() / 2 + 2.6],
+      [T() / 2 - 0.8, T() / 2 - 2.6],
     ];
     positions.forEach(([x, z], i) => {
       const cab = assets.get("fileCabinet");
@@ -366,6 +369,30 @@ const RoomTiles = (() => {
       group.add(cab);
       colliders.push(cab);
     });
+
+    // Rare set piece: one cabinet in the row is unstable and topples
+    // toward the player the first time they walk close to it. Built here
+    // (not via the normal positions.forEach loop above) so it's excluded
+    // from the static colliders array and gets its own topple-aware
+    // collider instead — falls away from the wall, into the room.
+    if (rng() < 0.35) {
+      const toppleIdx = Math.floor(rng() * positions.length);
+      const [tx, tz] = positions[toppleIdx];
+      const fallDir = tx < 0 ? 1 : -1;
+
+      const cab = assets.get("fileCabinet");
+      cab.position.set(tx, 0, tz);
+      cab.rotation.y = tx < 0 ? Math.PI / 2 : -Math.PI / 2;
+      group.add(cab);
+      colliders.push(cab);
+
+      atmosphere.registerToppleTrap(cab, {
+        fallAxis: "x",
+        fallDirection: fallDir,
+        triggerRadius: 2.2,
+      });
+    }
+
 
     const bin = assets.get("plasticBin");
     bin.position.set(0, 0, T() / 2 - 1.2);
