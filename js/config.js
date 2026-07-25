@@ -108,6 +108,6 @@ const GAME_CONFIG = {
     streamRadius: 1,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
     minTilesFromSpawnForExit: 6, // how many tiles out before an exit/stairwell room can appear
-    exitChancePerEligibleTile: 0.12, // once eligible, chance any given new tile becomes the exit
+    exitChancePerEligibleTile: 0.18, // once eligible, chance any given new tile becomes the exit
   },
 };
