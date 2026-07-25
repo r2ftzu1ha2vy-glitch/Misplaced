@@ -15,6 +15,7 @@
 class AtmosphereSystem {
   constructor() {
     this.eligibleObjects = [];
+    this.toppleTraps = [];
     this._clock = 0;
     this._nextEventAt = Utils.randRange(
       GAME_CONFIG.atmosphere.rareEventIntervalMin,
@@ -30,7 +31,37 @@ class AtmosphereSystem {
     });
   }
 
+  /**
+   * obj: the cabinet mesh (already placed/added to the scene, already in colliders).
+   * opts: { fallAxis: "x"|"z", fallDirection: 1|-1, triggerRadius }
+   * The cabinet stays a normal collider until the player walks within
+   * triggerRadius (in the object's own local tile space, checked against
+   * the object's world position each frame), at which point it topples
+   * once — a quick rotate-and-drop animated over ~0.5s — and never
+   * re-arms. Cheap: this is a flat array checked once per frame, not a
+   * physics simulation.
+   */
+  registerToppleTrap(obj, opts) {
+    const worldPos = new THREE.Vector3();
+    obj.getWorldPosition(worldPos);
+    this.toppleTraps.push({
+      obj,
+      worldPos,
+      fallAxis: opts.fallAxis === "z" ? "z" : "x",
+      fallDirection: opts.fallDirection === -1 ? -1 : 1,
+      triggerRadius: opts.triggerRadius || 2.2,
+      state: "idle", // idle -> falling -> done
+      fallElapsed: 0,
+      fallDuration: 0.45,
+      startRotZ: obj.rotation.z,
+      startRotX: obj.rotation.x,
+      startY: obj.position.y,
+    });
+  }
+
   update(dt, playerPosition) {
+    this._updateToppleTraps(dt, playerPosition);
+
     this._clock += dt;
     if (this._clock < this._nextEventAt) return;
 
@@ -56,5 +87,37 @@ class AtmosphereSystem {
     pick.obj.rotation.y = pick.originalRotationY + nudge;
 
     Utils.logInfo(`Atmosphere event: nudged "${pick.obj.userData.assetKey || pick.obj.name}"`);
+  }
+
+  _updateToppleTraps(dt, playerPosition) {
+    for (const trap of this.toppleTraps) {
+      if (trap.state === "done") continue;
+
+      if (trap.state === "idle") {
+        const d = trap.worldPos.distanceTo(playerPosition);
+        if (d <= trap.triggerRadius) {
+          trap.state = "falling";
+          Utils.logInfo("Atmosphere event: cabinet toppled near player");
+        }
+        continue;
+      }
+
+      // state === "falling"
+      trap.fallElapsed += dt;
+      const t = Math.min(trap.fallElapsed / trap.fallDuration, 1);
+      // ease-out so it snaps hard at the start (startle) and settles slow
+      const eased = 1 - Math.pow(1 - t, 3);
+      const fallAngle = eased * (Math.PI / 2);
+
+      if (trap.fallAxis === "x") {
+        trap.obj.rotation.z = trap.startRotZ - trap.fallDirection * fallAngle;
+      } else {
+        trap.obj.rotation.x = trap.startRotX + trap.fallDirection * fallAngle;
+      }
+      // slight sink as it lands flat so it doesn't hover mid-fall
+      trap.obj.position.y = trap.startY - eased * 0.05;
+
+      if (t >= 1) trap.state = "done";
+    }
   }
 }
