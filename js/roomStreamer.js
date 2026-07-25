@@ -37,14 +37,54 @@ class RoomStreamer {
 
     this.colliders = []; // flat list kept in sync for the player controller
 
-    this.exitPlaced = false;
-    this.exitTileCoord = null;
+    // Exit gates are FIXED, permanent locations chosen once up front (not
+    // random per-tile rolls anymore) — see _computeExitGateCoords. A tile
+    // that matches one of these coords is always the exit room, forever,
+    // whether it's being built for the first time or the hundredth.
+    this.exitGateCoords = this._computeExitGateCoords();
+    this._exitCoordKeys = new Set(this.exitGateCoords.map((c) => this.tileKey(c.tx, c.tz)));
 
     this._centerTx = null;
     this._centerTz = null;
 
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
   }
+
+  /** Picks GAME_CONFIG.floor1.exitGateCount fixed tile coordinates, each
+   *  between minTilesFromSpawnForExit and maxTilesFromSpawnForExit tiles
+   *  from spawn (Chebyshev distance, matching _distFromSpawnTiles), and at
+   *  least minTilesFromSpawnForExit tiles apart from every other chosen
+   *  gate — so no two gates can ever be close together either. Uses a
+   *  fixed seed so the same 4 spots are chosen every run. */
+  _computeExitGateCoords() {
+    const { minTilesFromSpawnForExit: minD, maxTilesFromSpawnForExit: maxD, exitGateCount } = GAME_CONFIG.floor1;
+    const rng = Utils.makeRng(0xE817E17E); // fixed seed: same gate layout every game
+    const coords = [];
+    let attempts = 0;
+
+    while (coords.length < exitGateCount && attempts < 5000) {
+      attempts++;
+      // Random point in an annulus [minD, maxD] around spawn, then snap to
+      // the tile grid — picking angle+radius (not raw x/z) keeps the
+      // distance-from-spawn distribution even instead of clumping into
+      // the corners of a square ring.
+      const angle = rng() * Math.PI * 2;
+      const radius = minD + rng() * (maxD - minD);
+      const tx = Math.round(Math.cos(angle) * radius);
+      const tz = Math.round(Math.sin(angle) * radius);
+
+      const distFromSpawn = this._distFromSpawnTiles(tx, tz);
+      if (distFromSpawn < minD || distFromSpawn > maxD) continue;
+
+      const tooCloseToOther = coords.some(
+        (c) => this._distFromSpawnTiles(tx - c.tx, tz - c.tz) < minD
+      );
+      if (tooCloseToOther) continue;
+
+      coords.push({ tx, tz });
+    }
+
+    return coords;
 
   worldToTile(x, z) {
     const size = GAME_CONFIG.floor1.tileSize;
@@ -110,33 +150,37 @@ class RoomStreamer {
     }
   }
 
-  /** Returns true + fires onWin once if the player is standing in the exit trigger. */
+  /** Returns true + fires onWin once if the player is standing in the exit
+   *  trigger of ANY of the 4 permanent exit gates that currently happen to
+   *  be loaded into a slot. */
   checkExitTrigger(playerPos) {
-    if (!this.exitPlaced) return false;
-    const key = this.tileKey(this.exitTileCoord.tx, this.exitTileCoord.tz);
-    const slot = this._slotByCoord.get(key);
-    if (!slot || !slot.exitTrigger) return false;
+    for (const gate of this.exitGateCoords) {
+      const key = this.tileKey(gate.tx, gate.tz);
+      const slot = this._slotByCoord.get(key);
+      if (!slot || !slot.exitTrigger) continue;
 
-    const size = GAME_CONFIG.floor1.tileSize;
-    // The exit room's furniture (including its trigger point) is rotated
-    // per-tile (see _pickRoomRotation), so the trigger's local point must
-    // be rotated the same amount before being placed in world space —
-    // otherwise the trigger stays fixed to the tile's un-rotated corner
-    // while the door itself visibly moves.
-    const rotationY = slot.furnitureGroup ? slot.furnitureGroup.rotation.y : 0;
-    const cos = Math.cos(rotationY);
-    const sin = Math.sin(rotationY);
-    const lx = slot.exitTrigger.localPoint.x;
-    const lz = slot.exitTrigger.localPoint.z;
-    const rotatedX = lx * cos + lz * sin;
-    const rotatedZ = -lx * sin + lz * cos;
+      const size = GAME_CONFIG.floor1.tileSize;
+      // The exit room's furniture (including its trigger point) is rotated
+      // per-tile (see _pickRoomRotation), so the trigger's local point must
+      // be rotated the same amount before being placed in world space —
+      // otherwise the trigger stays fixed to the tile's un-rotated corner
+      // while the door itself visibly moves.
+      const rotationY = slot.furnitureGroup ? slot.furnitureGroup.rotation.y : 0;
+      const cos = Math.cos(rotationY);
+      const sin = Math.sin(rotationY);
+      const lx = slot.exitTrigger.localPoint.x;
+      const lz = slot.exitTrigger.localPoint.z;
+      const rotatedX = lx * cos + lz * sin;
+      const rotatedZ = -lx * sin + lz * cos;
 
-    const worldTriggerX = slot.tx * size + rotatedX;
-    const worldTriggerZ = slot.tz * size + rotatedZ;
-    const dx = playerPos.x - worldTriggerX;
-    const dz = playerPos.z - worldTriggerZ;
-    const dist = Math.hypot(dx, dz);
-    return dist <= slot.exitTrigger.radius;
+      const worldTriggerX = slot.tx * size + rotatedX;
+      const worldTriggerZ = slot.tz * size + rotatedZ;
+      const dx = playerPos.x - worldTriggerX;
+      const dz = playerPos.z - worldTriggerZ;
+      const dist = Math.hypot(dx, dz);
+      if (dist <= slot.exitTrigger.radius) return true;
+    }
+    return false;
   }
 
   /** Re-centers the fixed grid on the new (this._centerTx, this._centerTz):
@@ -186,11 +230,9 @@ class RoomStreamer {
   _pickRoomType(tx, tz, rng) {
     if (tx === 0 && tz === 0) return "cubicleFarm"; // spawn always a known-safe room
 
-    const dist = this._distFromSpawnTiles(tx, tz);
-    const exitEligible = !this.exitPlaced && dist >= GAME_CONFIG.floor1.minTilesFromSpawnForExit;
-    if (exitEligible && rng() < GAME_CONFIG.floor1.exitChancePerEligibleTile) {
-      return "exit";
-    }
+    // Fixed, permanent gates — always the exit room whenever this exact
+    // tile is built, no randomness and no "already placed" flag needed.
+    if (this._exitCoordKeys.has(this.tileKey(tx, tz))) return "exit";
 
     const roll = rng();
     if (roll < 0.34) return "cubicleFarm";
@@ -245,9 +287,7 @@ class RoomStreamer {
         break;
       case "exit":
         result = RoomTiles.buildExitRoom(slot.furnitureGroup, this.assets, this.lighting, this.atmosphere, rng, true);
-        this.exitPlaced = true;
-        this.exitTileCoord = { tx, tz };
-        Utils.logInfo(`Exit room placed at tile (${tx}, ${tz})`);
+        Utils.logInfo(`Exit gate room built at tile (${tx}, ${tz})`);
         break;
       case "cubicleFarm":
       default:
