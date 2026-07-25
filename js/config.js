@@ -59,6 +59,7 @@ const GAME_CONFIG = {
     crouchHeight: 0.95,
     crouchTransitionSpeed: 8,
     sensitivity: 0.0022,
+    touchSensitivityMultiplier: 5.5, // touch drags cover far less pixel distance per frame than raw mouse movementX, so this needs to be well above 1 to feel comparable
     bobFrequencyWalk: 7.2,
     bobFrequencySprint: 10.5,
     bobAmplitudeWalk: 0.035,
