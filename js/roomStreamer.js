@@ -118,8 +118,21 @@ class RoomStreamer {
     if (!slot || !slot.exitTrigger) return false;
 
     const size = GAME_CONFIG.floor1.tileSize;
-    const worldTriggerX = slot.tx * size + slot.exitTrigger.localPoint.x;
-    const worldTriggerZ = slot.tz * size + slot.exitTrigger.localPoint.z;
+    // The exit room's furniture (including its trigger point) is rotated
+    // per-tile (see _pickRoomRotation), so the trigger's local point must
+    // be rotated the same amount before being placed in world space —
+    // otherwise the trigger stays fixed to the tile's un-rotated corner
+    // while the door itself visibly moves.
+    const rotationY = slot.furnitureGroup ? slot.furnitureGroup.rotation.y : 0;
+    const cos = Math.cos(rotationY);
+    const sin = Math.sin(rotationY);
+    const lx = slot.exitTrigger.localPoint.x;
+    const lz = slot.exitTrigger.localPoint.z;
+    const rotatedX = lx * cos + lz * sin;
+    const rotatedZ = -lx * sin + lz * cos;
+
+    const worldTriggerX = slot.tx * size + rotatedX;
+    const worldTriggerZ = slot.tz * size + rotatedZ;
     const dx = playerPos.x - worldTriggerX;
     const dz = playerPos.z - worldTriggerZ;
     const dist = Math.hypot(dx, dz);
@@ -187,6 +200,16 @@ class RoomStreamer {
     return "archive";
   }
 
+  /** Every room's 4 walls all have an identical centered doorway, so the
+   *  furniture inside can be rotated a quarter-turn at a time without ever
+   *  blocking a doorway or looking asymmetric from outside — this gives 4
+   *  distinct-feeling variants (0/90/180/270) of the same room type instead
+   *  of every cubicleFarm/meetingRoom/etc tile looking identical. */
+  _pickRoomRotation(tx, tz, rng) {
+    const steps = Math.floor(rng() * 4); // 0..3
+    return steps * (Math.PI / 2);
+  }
+
   /** Clears whatever furniture a slot currently has and rebuilds it for
    *  (tx, tz): re-skins the shared floor material and refills the
    *  slot's furnitureGroup, without touching wall/ceiling/floor geometry
@@ -198,12 +221,14 @@ class RoomStreamer {
     const seed = Utils.seedFromCoords(tx, tz);
     const rng = Utils.makeRng(seed);
     const roomType = this._pickRoomType(tx, tz, rng);
+    const rotationY = this._pickRoomRotation(tx, tz, rng);
 
     // Re-skin the shared floor slab for this room type instead of
     // rebuilding it.
     slot.floorMesh.material = RoomTiles.floorMatForRoomType(roomType);
 
     slot.furnitureGroup.position.set(0, 0, 0);
+    slot.furnitureGroup.rotation.set(0, rotationY, 0);
     let result;
     switch (roomType) {
       case "meetingRoom":
