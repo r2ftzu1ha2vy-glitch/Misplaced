@@ -10,16 +10,20 @@
 
 (function () {
   let scene, camera, renderer, clock;
-  let player, lighting, atmosphere;
+  let player, lighting, atmosphere, roomStreamer;
   let colliders = [];
   let running = false;
+  let hasWon = false;
 
   function init() {
     scene = new THREE.Scene();
+    // Fog far is intentionally close to the stream radius edge so newly
+    // streamed-in tiles fade in through fog rather than visibly popping.
+    const streamEdge = GAME_CONFIG.floor1.tileSize * (GAME_CONFIG.floor1.streamRadius + 0.5);
     scene.fog = new THREE.Fog(
       GAME_CONFIG.atmosphere.fogColor,
       GAME_CONFIG.atmosphere.fogNear,
-      GAME_CONFIG.atmosphere.fogFar
+      Math.min(GAME_CONFIG.atmosphere.fogFar, streamEdge)
     );
     scene.background = new THREE.Color(GAME_CONFIG.atmosphere.fogColor);
 
@@ -27,7 +31,7 @@
       GAME_CONFIG.player.fovBase,
       window.innerWidth / window.innerHeight,
       0.05,
-      100
+      streamEdge + 10
     );
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -77,8 +81,8 @@
 
     if (statusEl) statusEl.textContent = "Assembling floor…";
 
-    const floor1 = new Floor1Layout();
-    const result = floor1.build(scene, assets, lighting, atmosphere);
+    roomStreamer = new RoomStreamer(scene, assets, lighting, atmosphere, onWin);
+    const result = roomStreamer.buildInitial();
     colliders = result.colliders;
 
     player.position.copy(result.spawnPoint);
@@ -87,16 +91,36 @@
     return assets;
   }
 
+  function onWin() {
+    if (hasWon) return;
+    hasWon = true;
+    running = false;
+    document.exitPointerLock && document.exitPointerLock();
+    const winEl = document.getElementById("winscreen");
+    if (winEl) {
+      winEl.style.display = "flex";
+      requestAnimationFrame(() => winEl.classList.add("show"));
+    }
+  }
+
   function animate() {
     if (!running) return;
-    requestAnimationFrame(animate);
     const dt = Math.min(clock.getDelta(), 0.05); // clamp to avoid huge steps on tab-out
 
     player.update(dt);
     lighting.update(dt);
     atmosphere.update(dt, player.position);
 
+    if (roomStreamer) {
+      roomStreamer.update(player.position);
+      colliders = roomStreamer.colliders; // keep the getter's backing array current
+      if (roomStreamer.checkExitTrigger(player.position)) {
+        onWin();
+      }
+    }
+
     renderer.render(scene, camera);
+    if (running) requestAnimationFrame(animate);
   }
 
   function start() {
