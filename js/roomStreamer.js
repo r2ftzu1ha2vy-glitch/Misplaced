@@ -42,6 +42,10 @@ class RoomStreamer {
     this._buildQueue = [];
     this._queuedSet = new Set();
     this.tilesBuiltPerFrame = 1;
+    this.framesBetweenBuilds = 5; // "5 frames later" spacing between each queued build
+    this._frameCounter = 0;
+    this._moveDirX = 0; // last known travel direction, for left/right/front priority
+    this._moveDirZ = 1;
 
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
   }
@@ -74,6 +78,14 @@ class RoomStreamer {
   update(playerPos) {
     const { tx, tz } = this.worldToTile(playerPos.x, playerPos.z);
     if (tx !== this._lastCenterTx || tz !== this._lastCenterTz) {
+      if (this._lastCenterTx !== null) {
+        const ddx = tx - this._lastCenterTx;
+        const ddz = tz - this._lastCenterTz;
+        if (ddx !== 0 || ddz !== 0) {
+          this._moveDirX = Math.sign(ddx) || this._moveDirX;
+          this._moveDirZ = Math.sign(ddz) || this._moveDirZ;
+        }
+      }
       this._lastCenterTx = tx;
       this._lastCenterTz = tz;
       this._streamAround(tx, tz, /* immediate */ false);
@@ -81,8 +93,28 @@ class RoomStreamer {
     this._drainBuildQueue();
   }
 
-  /** Builds up to tilesBuiltPerFrame queued tiles. Called once per frame from update(). */
+  /**
+   * Lower number = built sooner. The tile dead ahead in the player's
+   * travel direction is the one fog hides until they're nearly on top of
+   * it, so it's intentionally last; side neighbors are visible through
+   * open doorways much sooner and go first.
+   */
+  _buildPriority(dx, dz, centerTx, centerTz) {
+    if (dx === 0 && dz === 0) return -1; // the tile the player is standing in, always first
+    const forwardDot = dx * this._moveDirX + dz * this._moveDirZ;
+    const manhattan = Math.abs(dx) + Math.abs(dz);
+    if (forwardDot > 0) return 100 + manhattan;   // ahead — build last
+    if (forwardDot === 0) return 10 + manhattan;  // beside — build early (left/right)
+    return 20 + manhattan;                        // behind — mid priority
+  }
+
+  /** Builds up to tilesBuiltPerFrame queued tiles, but only every framesBetweenBuilds
+   *  frames — so left/right/front pop in a few frames apart instead of all at once. */
   _drainBuildQueue() {
+    if (this._buildQueue.length === 0) return;
+    this._frameCounter = (this._frameCounter || 0) + 1;
+    if (this._frameCounter % this.framesBetweenBuilds !== 0) return;
+
     let n = this.tilesBuiltPerFrame;
     while (n > 0 && this._buildQueue.length > 0) {
       const { tx, tz } = this._buildQueue.shift();
@@ -133,14 +165,21 @@ class RoomStreamer {
         if (immediate) {
           this._buildTile(tx, tz);
         } else if (!this._queuedSet.has(key)) {
-          // Closest tiles first, so the room the player is actually
-          // walking into pops in before the ones beside it.
+          // Priority isn't just "closest" — the room straight ahead is
+          // the one the player can actually see coming (through the
+          // doorway), while side/behind neighbors are hidden by fog until
+          // the player is basically already in the doorway to them. So
+          // load the tile the player just moved into first, its left/right
+          // neighbors next, and anything else (including the far/front
+          // one relative to travel direction) last, spaced a few frames
+          // apart so each pop-in is spread out rather than bunched up.
           this._queuedSet.add(key);
-          this._buildQueue.push({ tx, tz, dist: Math.abs(dx) + Math.abs(dz) });
+          const priority = this._buildPriority(dx, dz, centerTx, centerTz);
+          this._buildQueue.push({ tx, tz, priority });
         }
       }
     }
-    if (!immediate) this._buildQueue.sort((a, b) => a.dist - b.dist);
+    if (!immediate) this._buildQueue.sort((a, b) => a.priority - b.priority);
 
     // Unload tiles outside the wanted set (never unload the exit tile
     // once it exists, so the win room stays reachable/consistent)
