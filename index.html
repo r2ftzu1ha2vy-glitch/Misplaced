@@ -129,7 +129,9 @@
 
   #titlecard h1.imgtitle {
     width: min(80vw, 480px);
+    max-width: 480px;
     height: auto;
+    object-fit: contain;
     margin: 0 0 4px 0;
   }
 
@@ -192,7 +194,7 @@
 
   /* ---------------- Mobile / small-screen fit ---------------- */
   @media (max-width: 680px), (max-height: 480px) {
-    #titlecard h1.imgtitle { width: min(70vw, 320px); }
+    #titlecard h1.imgtitle { width: min(85vw, 320px); max-width: 85vw; }
     #titlecard .sub { font-size: 0.65em; letter-spacing: 0.22em; margin-bottom: 26px; }
     #titlecard .prompt { font-size: 0.8em; padding: 9px 18px; }
     #titlecard .loading-status { font-size: 0.65em; margin-top: 14px; }
@@ -229,7 +231,7 @@
     /* Landscape phones are short — the vertical title stack needs to
        shrink further so the "CLICK TO ENTER" prompt + loading bar don't
        get pushed off the bottom edge. */
-    #titlecard h1.imgtitle { width: min(38vw, 240px); }
+    #titlecard h1.imgtitle { width: min(50vw, 240px); max-width: 50vw; }
     #titlecard .sub { margin-bottom: 14px; }
     #titlecard .loading-status { margin-top: 8px; }
     #titlecard .barwrap { margin-top: 8px; }
