@@ -347,18 +347,37 @@ const RoomTiles = (() => {
     const cols = 3;
     const spacing = 2.2;
     const startX = -((cols - 1) * spacing) / 2;
-    for (let c = 0; c < cols; c++) {
-      const cab = assets.get("fileCabinet");
-      cab.position.set(startX + c * spacing, 0, -1.5);
-      cab.rotation.y = rng() < 0.5 ? 0 : Math.PI;
-      group.add(cab);
-      colliders.push(cab);
 
-      const cab2 = assets.get("fileCabinet");
-      cab2.position.set(startX + c * spacing, 0, 1.5);
-      cab2.rotation.y = rng() < 0.5 ? 0 : Math.PI;
-      group.add(cab2);
-      colliders.push(cab2);
+    // Pick at most one cabinet slot in this room to be an unstable
+    // topple trap (same idea as the archive room), so server rooms get
+    // their own occasional jump-scare instead of always being static.
+    const totalSlots = cols * 2;
+    const hasTopple = rng() < 0.5;
+    const toppleIdx = hasTopple ? Math.floor(rng() * totalSlots) : -1;
+    let slotIdx = 0;
+
+    for (let c = 0; c < cols; c++) {
+      const xPos = startX + c * spacing;
+
+      for (const zPos of [-1.5, 1.5]) {
+        const isToppleSlot = slotIdx === toppleIdx;
+        const cab = assets.get("fileCabinet");
+        cab.position.set(xPos, 0, zPos);
+        const faceOut = zPos < 0 ? 0 : Math.PI;
+        cab.rotation.y = faceOut;
+        group.add(cab);
+        colliders.push(cab);
+
+        if (isToppleSlot) {
+          atmosphere.registerToppleTrap(cab, {
+            fallAxis: "z",
+            fallDirection: zPos < 0 ? -1 : 1,
+            triggerRadius: 2.0,
+          });
+        }
+
+        slotIdx++;
+      }
     }
 
     // A lone flickering fixture — server rooms read creepier under-lit
@@ -400,7 +419,7 @@ const RoomTiles = (() => {
     // statically and then a second, topple-aware cabinet was placed on
     // top of it at the same coordinates, which read as a visually
     // duplicated/overlapping cabinet.
-    const hasTopple = rng() < 0.35;
+    const hasTopple = rng() < 0.65;
     const toppleIdx = hasTopple ? Math.floor(rng() * positions.length) : -1;
 
     positions.forEach(([x, z], i) => {
