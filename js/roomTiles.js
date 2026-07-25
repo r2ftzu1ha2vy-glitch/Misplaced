@@ -116,6 +116,32 @@ const RoomTiles = (() => {
     }
   }
 
+  // ---------------------------------------------------------------
+  // Persistent shell support (used by the "fixed grid, re-centered on
+  // the player" streaming mode). Builds ONE shell — floor, ceiling,
+  // 4 walls w/ doorway gaps — as a reusable Group with the floor mesh
+  // tagged for material swapping, instead of rebuilding it per tile.
+  // ---------------------------------------------------------------
+  function buildReusableShell() {
+    const colliders = [];
+    const group = new THREE.Group();
+    buildShell(group, mats().floor, colliders);
+    // First collider pushed by buildShell is always the floor (see above) —
+    // stash a direct ref so callers can re-skin it per room type without
+    // walking the tree.
+    const floorMesh = colliders[0];
+    return { group, colliders, floorMesh };
+  }
+
+  function floorMatForRoomType(roomType) {
+    switch (roomType) {
+      case "cubicleFarm": return mats().floorCarpetBlue;
+      case "breakRoom": return mats().floorBreak;
+      case "serverRoom": return mats().floorServer;
+      default: return mats().floor;
+    }
+  }
+
   function addCeilingLight(group, assets, lighting, x, z) {
     const h = H();
     // decay=1 (soft, game-friendly falloff) instead of decay=2 (physically
@@ -148,9 +174,9 @@ const RoomTiles = (() => {
   // computers, and chairs. Uses the fixed cubicle_v2 model so its
   // partition walls actually render upright.
   // ---------------------------------------------------------------
-  function buildCubicleFarm(group, assets, lighting, atmosphere, rng) {
+  function buildCubicleFarm(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floorCarpetBlue, colliders);
+    if (!skipShell) buildShell(group, mats().floorCarpetBlue, colliders);
 
     const rows = 2, cols = 2;
     const spacing = 4.2;
@@ -216,9 +242,9 @@ const RoomTiles = (() => {
   // Room type: Meeting Room — desks arranged as a conference table,
   // chairs around it, whiteboard on the back wall.
   // ---------------------------------------------------------------
-  function buildMeetingRoom(group, assets, lighting, atmosphere, rng) {
+  function buildMeetingRoom(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floor, colliders);
+    if (!skipShell) buildShell(group, mats().floor, colliders);
 
     for (let i = -1; i <= 1; i++) {
       const desk = assets.get("deskSet");
@@ -262,9 +288,9 @@ const RoomTiles = (() => {
   // Room type: Break Room — coffee machine, printer, bins, a small
   // table setup near the wall.
   // ---------------------------------------------------------------
-  function buildBreakRoom(group, assets, lighting, atmosphere, rng) {
+  function buildBreakRoom(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floorBreak, colliders);
+    if (!skipShell) buildShell(group, mats().floorBreak, colliders);
 
     const coffee = assets.get("coffeeMachine");
     coffee.position.set(-3, 0, -T() / 2 + WT() + 0.55);
@@ -314,9 +340,9 @@ const RoomTiles = (() => {
   // Room type: Server Room — dim, tight rows implied by file
   // cabinets stood on end, minimal furniture, darker floor.
   // ---------------------------------------------------------------
-  function buildServerRoom(group, assets, lighting, atmosphere, rng) {
+  function buildServerRoom(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floorServer, colliders);
+    if (!skipShell) buildShell(group, mats().floorServer, colliders);
 
     const cols = 3;
     const spacing = 2.2;
@@ -353,9 +379,9 @@ const RoomTiles = (() => {
   // Room type: Storage / Archive — cabinets and bins along the
   // walls, mostly empty floor space.
   // ---------------------------------------------------------------
-  function buildArchive(group, assets, lighting, atmosphere, rng) {
+  function buildArchive(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floor, colliders);
+    if (!skipShell) buildShell(group, mats().floor, colliders);
 
     // Positions kept off the doorway centerline (door gap is centered on
     // each wall, DOOR() wide) — cabinets used to sit almost exactly in the
@@ -417,9 +443,9 @@ const RoomTiles = (() => {
   // Room type: Exit / Stairwell — the "win" room. A trigger volume
   // in the middle fires the onWin callback when the player enters.
   // ---------------------------------------------------------------
-  function buildExitRoom(group, assets, lighting, atmosphere, rng) {
+  function buildExitRoom(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
-    buildShell(group, mats().floor, colliders);
+    if (!skipShell) buildShell(group, mats().floor, colliders);
 
     // A simple staircase gesture built from stacked boxes so the
     // room reads as "leads somewhere" even without a dedicated model.
@@ -453,5 +479,7 @@ const RoomTiles = (() => {
     buildServerRoom,
     buildArchive,
     buildExitRoom,
+    buildReusableShell,
+    floorMatForRoomType,
   };
 })();
