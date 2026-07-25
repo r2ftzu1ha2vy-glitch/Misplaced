@@ -128,7 +128,7 @@ const RoomTiles = (() => {
     light.castShadow = false;
     group.add(light);
 
-    const fixtureMesh = assets.get("ceilingLight");
+    const fixtureMesh = assets.get("ceilingLight", true); // true = give this instance its own materials, it flickers independently
     fixtureMesh.position.set(x, h - 0.05, z);
     fixtureMesh.traverse((n) => {
       if (n.isMesh && n.material) {
@@ -196,7 +196,7 @@ const RoomTiles = (() => {
     }
 
     // A file cabinet and plant tucked in a corner
-    const cab = assets.get(rng() < 0.5 ? "fileCabinet" : "rustyFileCabinet");
+    const cab = assets.get("fileCabinet");
     cab.position.set(T() / 2 - 1.2, 0, T() / 2 - 1.2);
     group.add(cab);
     colliders.push(cab);
@@ -317,13 +317,13 @@ const RoomTiles = (() => {
     const spacing = 2.2;
     const startX = -((cols - 1) * spacing) / 2;
     for (let c = 0; c < cols; c++) {
-      const cab = assets.get(rng() < 0.5 ? "rustyFileCabinet" : "fileCabinet");
+      const cab = assets.get("fileCabinet");
       cab.position.set(startX + c * spacing, 0, -1.5);
       cab.rotation.y = rng() < 0.5 ? 0 : Math.PI;
       group.add(cab);
       colliders.push(cab);
 
-      const cab2 = assets.get(rng() < 0.5 ? "rustyFileCabinet" : "fileCabinet");
+      const cab2 = assets.get("fileCabinet");
       cab2.position.set(startX + c * spacing, 0, 1.5);
       cab2.rotation.y = rng() < 0.5 ? 0 : Math.PI;
       group.add(cab2);
@@ -360,7 +360,7 @@ const RoomTiles = (() => {
       [T() / 2 - 0.8, T() / 2 - 1.5],
     ];
     positions.forEach(([x, z], i) => {
-      const cab = assets.get(i % 2 === 0 ? "fileCabinet" : "rustyFileCabinet");
+      const cab = assets.get("fileCabinet");
       cab.position.set(x, 0, z);
       cab.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2;
       group.add(cab);
