@@ -79,6 +79,7 @@ const GAME_CONFIG = {
     fogNear: 2,
     fogFar: 26,
     ambientIntensity: 0.14,
+    flickerGraceSeconds: 6,   // guaranteed calm period after a fixture first loads/streams in
     flickerCheckIntervalMin: 4,
     flickerCheckIntervalMax: 11,
     flickerEventDurationMin: 0.15,
