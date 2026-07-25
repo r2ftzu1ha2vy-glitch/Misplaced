@@ -118,7 +118,12 @@ const RoomTiles = (() => {
 
   function addCeilingLight(group, assets, lighting, x, z) {
     const h = H();
-    const light = new THREE.PointLight(0xdfe8ea, 1.2, 11, 2);
+    // decay=1 (soft, game-friendly falloff) instead of decay=2 (physically
+    // correct inverse-square) — with decay=2 a fixture ~2.5m above the
+    // floor was only contributing ~0.1-0.3 intensity at eye/floor level,
+    // which read as near-total darkness. intensity raised to match.
+    const baseIntensity = 9;
+    const light = new THREE.PointLight(0xdfe8ea, baseIntensity, 14, 1);
     light.position.set(x, h - 0.15, z);
     light.castShadow = false;
     group.add(light);
@@ -135,7 +140,7 @@ const RoomTiles = (() => {
       }
     });
     group.add(fixtureMesh);
-    lighting.registerFixture(light, fixtureMesh, 1.2);
+    lighting.registerFixture(light, fixtureMesh, baseIntensity);
   }
 
   // ---------------------------------------------------------------
