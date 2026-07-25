@@ -179,6 +179,7 @@ class RoomStreamer {
 
   _unloadTile(key, entry) {
     this.scene.remove(entry.group);
+    this.atmosphere.forgetGroup(entry.group);
     entry.group.traverse((n) => {
       if (n.isMesh) {
         n.geometry && n.geometry.dispose && n.geometry.dispose();
