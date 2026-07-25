@@ -102,8 +102,24 @@
     hasWon = true;
     running = false;
     document.exitPointerLock && document.exitPointerLock();
+
+    const fadeEl = document.getElementById("fadeOverlay");
     const winEl = document.getElementById("winscreen");
-    if (winEl) {
+
+    // Fade to black first (the door "closing" behind the player), THEN
+    // reveal the message underneath — once Floor 2 exists, this same
+    // fade-in is the natural hook point to swap scenes instead of
+    // showing winEl: rebuild the level for Floor 2 while the screen is
+    // black, then fade back out.
+    if (fadeEl) {
+      fadeEl.classList.add("show");
+      setTimeout(() => {
+        if (winEl) {
+          winEl.style.display = "flex";
+          requestAnimationFrame(() => winEl.classList.add("show"));
+        }
+      }, 1100); // matches #fadeOverlay's transition duration
+    } else if (winEl) {
       winEl.style.display = "flex";
       requestAnimationFrame(() => winEl.classList.add("show"));
     }
