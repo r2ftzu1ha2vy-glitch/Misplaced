@@ -340,7 +340,7 @@ const RoomTiles = (() => {
   // Room type: Server Room — dim, tight rows implied by file
   // cabinets stood on end, minimal furniture, darker floor.
   // ---------------------------------------------------------------
-  function buildServerRoom(group, assets, lighting, atmosphere, rng, skipShell) {
+  function buildServerRoom(group, assets, lighting, atmosphere, rng, skipShell, tx, tz) {
     const colliders = [];
     if (!skipShell) buildShell(group, mats().floorServer, colliders);
 
@@ -373,6 +373,7 @@ const RoomTiles = (() => {
             fallAxis: "z",
             fallDirection: zPos < 0 ? -1 : 1,
             triggerRadius: 2.0,
+            key: `${tx},${tz}:server:${slotIdx}`,
           });
         }
 
@@ -398,7 +399,7 @@ const RoomTiles = (() => {
   // Room type: Storage / Archive — cabinets and bins along the
   // walls, mostly empty floor space.
   // ---------------------------------------------------------------
-  function buildArchive(group, assets, lighting, atmosphere, rng, skipShell) {
+  function buildArchive(group, assets, lighting, atmosphere, rng, skipShell, tx, tz) {
     const colliders = [];
     if (!skipShell) buildShell(group, mats().floor, colliders);
 
@@ -445,6 +446,7 @@ const RoomTiles = (() => {
         fallAxis: "x",
         fallDirection: fallDir,
         triggerRadius: 2.2,
+        key: `${tx},${tz}:archive:${toppleIdx}`,
       });
     }
 
