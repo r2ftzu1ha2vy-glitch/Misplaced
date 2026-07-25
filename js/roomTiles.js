@@ -441,33 +441,33 @@ const RoomTiles = (() => {
 
   // ---------------------------------------------------------------
   // Room type: Exit / Stairwell — the "win" room. A trigger volume
-  // in the middle fires the onWin callback when the player enters.
+  // in front of the door fires the onWin callback when the player
+  // enters it.
   // ---------------------------------------------------------------
   function buildExitRoom(group, assets, lighting, atmosphere, rng, skipShell) {
     const colliders = [];
     if (!skipShell) buildShell(group, mats().floor, colliders);
 
-    // A simple staircase gesture built from stacked boxes so the
-    // room reads as "leads somewhere" even without a dedicated model.
-    const stairMat = mats().exitGlow;
-    const steps = 8;
-    for (let i = 0; i < steps; i++) {
-      const step = box(2.2, 0.22, 0.6, stairMat);
-      step.position.set(0, 0.11 + i * 0.22, -2 + i * 0.6);
-      group.add(step);
-      colliders.push(step);
-    }
+    const doorZ = T() / 2 - WT() - 0.05;
+    const door = assets.get("exitDoor");
+    door.position.set(0, 0, doorZ);
+    door.rotation.y = Math.PI; // face into the room
+    group.add(door);
+    colliders.push(door);
 
-    const doorFrame = box(2.4, H(), 0.3, mats().wallDivider);
-    doorFrame.position.set(0, H() / 2, -2 + steps * 0.6);
-    group.add(doorFrame);
+    // Faint glow floor patch in front of the door so it reads as the
+    // "goal" from across the room, even under the low ambient light.
+    const glowPatch = box(2.4, 0.05, 1.4, mats().exitGlow);
+    glowPatch.position.set(0, 0.02, doorZ - 1.2);
+    group.add(glowPatch);
 
-    addCeilingLight(group, assets, lighting, 0, 2);
+    addCeilingLight(group, assets, lighting, 0, doorZ - 1.5);
 
     // Trigger zone: a simple sphere-distance check handled by the streamer,
-    // exposed here as a world-space-agnostic local point + radius.
-    const triggerLocal = new THREE.Vector3(0, 1, -1);
-    const triggerRadius = 2.2;
+    // exposed here as a world-space-agnostic local point + radius,
+    // positioned just in front of the door rather than mid-room.
+    const triggerLocal = new THREE.Vector3(0, 1, doorZ - 1.2);
+    const triggerRadius = 1.8;
 
     return { colliders, exitTrigger: { localPoint: triggerLocal, radius: triggerRadius } };
   }
