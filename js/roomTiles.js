@@ -393,7 +393,18 @@ const RoomTiles = (() => {
       [T() / 2 - 0.8, -T() / 2 + 2.6],
       [T() / 2 - 0.8, T() / 2 - 2.6],
     ];
+    // Rare set piece: one cabinet in the row is unstable and topples
+    // toward the player the first time they walk close to it. The slot
+    // is chosen BEFORE the static loop below and skipped there, so only
+    // ONE cabinet ever occupies that position — it used to be built once
+    // statically and then a second, topple-aware cabinet was placed on
+    // top of it at the same coordinates, which read as a visually
+    // duplicated/overlapping cabinet.
+    const hasTopple = rng() < 0.35;
+    const toppleIdx = hasTopple ? Math.floor(rng() * positions.length) : -1;
+
     positions.forEach(([x, z], i) => {
+      if (i === toppleIdx) return; // built separately below instead
       const cab = assets.get("fileCabinet");
       cab.position.set(x, 0, z);
       cab.rotation.y = x < 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -401,13 +412,7 @@ const RoomTiles = (() => {
       colliders.push(cab);
     });
 
-    // Rare set piece: one cabinet in the row is unstable and topples
-    // toward the player the first time they walk close to it. Built here
-    // (not via the normal positions.forEach loop above) so it's excluded
-    // from the static colliders array and gets its own topple-aware
-    // collider instead — falls away from the wall, into the room.
-    if (rng() < 0.35) {
-      const toppleIdx = Math.floor(rng() * positions.length);
+    if (hasTopple) {
       const [tx, tz] = positions[toppleIdx];
       const fallDir = tx < 0 ? 1 : -1;
 
