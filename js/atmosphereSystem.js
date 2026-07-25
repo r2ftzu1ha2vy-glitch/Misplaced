@@ -21,6 +21,17 @@ class AtmosphereSystem {
       GAME_CONFIG.atmosphere.rareEventIntervalMin,
       GAME_CONFIG.atmosphere.rareEventIntervalMax
     );
+
+    // Set once the fall.mp3 buffer finishes loading (see main.js); topple
+    // traps that fire before then just skip the sound rather than erroring.
+    this._audioListener = null;
+    this._fallBuffer = null;
+  }
+
+  /** Called once from main.js after the cabinet-topple sound has loaded. */
+  setFallSound(listener, buffer) {
+    this._audioListener = listener;
+    this._fallBuffer = buffer;
   }
 
   registerObject(obj) {
@@ -80,6 +91,36 @@ class AtmosphereSystem {
     };
     this.eligibleObjects = this.eligibleObjects.filter((e) => !isInGroup(e.obj));
     this.toppleTraps = this.toppleTraps.filter((t) => !isInGroup(t.obj));
+
+    // A cabinet can start falling (and start its sound) right before the
+    // player sprints far enough away to unload that tile — stop any
+    // still-playing PositionalAudio in this group so it doesn't keep
+    // playing detached from a disposed mesh.
+    group.traverse((n) => {
+      if (n.isAudio && n.isPlaying) n.stop();
+    });
+  }
+
+  /** Spawns a one-shot PositionalAudio on the toppling cabinet itself, so
+   *  the sound pans and attenuates with distance/direction like a real
+   *  object in the room. Silently no-ops if the buffer hasn't finished
+   *  loading yet (rare — only possible in the first few seconds of play). */
+  _playFallSound(cabinetObj) {
+    if (!this._audioListener || !this._fallBuffer) return;
+    const sound = new THREE.PositionalAudio(this._audioListener);
+    sound.setBuffer(this._fallBuffer);
+    sound.setRefDistance(3);
+    sound.setRolloffFactor(1.5);
+    sound.setVolume(1.0);
+    sound.setLoop(false);
+    // Auto-cleanup once playback finishes so these don't pile up on the
+    // cabinet mesh (which itself gets disposed when its tile unloads, but
+    // this handles the common case of finishing first).
+    sound.onEnded = () => {
+      if (sound.parent) sound.parent.remove(sound);
+    };
+    cabinetObj.add(sound);
+    sound.play();
   }
 
   update(dt, playerPosition) {
@@ -120,6 +161,7 @@ class AtmosphereSystem {
         const d = trap.worldPos.distanceTo(playerPosition);
         if (d <= trap.triggerRadius) {
           trap.state = "falling";
+          this._playFallSound(trap.obj);
           Utils.logInfo("Atmosphere event: cabinet toppled near player");
         }
         continue;
