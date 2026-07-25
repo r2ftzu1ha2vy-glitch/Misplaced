@@ -26,6 +26,15 @@ class AtmosphereSystem {
     // traps that fire before then just skip the sound rather than erroring.
     this._audioListener = null;
     this._fallBuffer = null;
+
+    // Tiles unload/reload as the player moves, which used to re-run each
+    // room builder from scratch and re-register a brand-new, fully "idle"
+    // topple trap every time — so a cabinet that already fell would just
+    // reset itself and be able to fall again on a return visit. This set
+    // persists for the whole game session (never cleared on tile unload)
+    // and remembers which trap keys have already fired, so a re-furnished
+    // slot can skip re-arming them.
+    this._toppledKeys = new Set();
   }
 
   /** Called once from main.js after the cabinet-topple sound has loaded. */
@@ -44,19 +53,41 @@ class AtmosphereSystem {
 
   /**
    * obj: the cabinet mesh (already placed/added to the scene, already in colliders).
-   * opts: { fallAxis: "x"|"z", fallDirection: 1|-1, triggerRadius }
+   * opts: { fallAxis: "x"|"z", fallDirection: 1|-1, triggerRadius, key }
+   * `key` is a stable identifier for this exact trap slot (e.g. a tile
+   * coordinate + slot index) — required so a re-furnished tile can tell
+   * "this cabinet already fell once" apart from "this is a fresh cabinet",
+   * across unload/reload cycles.
    * The cabinet stays a normal collider until the player walks within
    * triggerRadius (in the object's own local tile space, checked against
    * the object's world position each frame), at which point it topples
    * once — a quick rotate-and-drop animated over ~0.5s — and never
-   * re-arms. Cheap: this is a flat array checked once per frame, not a
-   * physics simulation.
+   * re-arms, even if the tile unloads and is rebuilt later. Cheap: this is
+   * a flat array checked once per frame, not a physics simulation.
    */
   registerToppleTrap(obj, opts) {
+    const key = opts.key;
+    const alreadyToppled = key != null && this._toppledKeys.has(key);
+
+    if (alreadyToppled) {
+      // Spawn it already fallen — no trigger, no re-animation, no sound —
+      // so the room looks consistent with what the player already saw.
+      const fallAngle = Math.PI / 2;
+      const fallDirection = opts.fallDirection === -1 ? -1 : 1;
+      if ((opts.fallAxis === "z" ? "z" : "x") === "x") {
+        obj.rotation.z -= fallDirection * fallAngle;
+      } else {
+        obj.rotation.x += fallDirection * fallAngle;
+      }
+      obj.position.y -= 0.05;
+      return;
+    }
+
     const worldPos = new THREE.Vector3();
     obj.getWorldPosition(worldPos);
     this.toppleTraps.push({
       obj,
+      key,
       worldPos,
       fallAxis: opts.fallAxis === "z" ? "z" : "x",
       fallDirection: opts.fallDirection === -1 ? -1 : 1,
@@ -161,6 +192,7 @@ class AtmosphereSystem {
         const d = trap.worldPos.distanceTo(playerPosition);
         if (d <= trap.triggerRadius) {
           trap.state = "falling";
+          if (trap.key != null) this._toppledKeys.add(trap.key);
           this._playFallSound(trap.obj);
           Utils.logInfo("Atmosphere event: cabinet toppled near player");
         }
