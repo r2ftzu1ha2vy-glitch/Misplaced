@@ -112,7 +112,8 @@ const GAME_CONFIG = {
     // streaming, at roughly a third of the geometry/light cost.
     streamRadius: 1,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
-    minTilesFromSpawnForExit: 4, // how many tiles out before an exit/stairwell room can appear
-    exitChancePerEligibleTile: 0.35, // once eligible, chance any given new tile becomes the exit
+    minTilesFromSpawnForExit: 20, // min tiles out an exit gate can be placed
+    maxTilesFromSpawnForExit: 50, // max tiles out an exit gate can be placed
+    exitGateCount: 4,             // how many permanent exit gates exist on the floor
   },
 };
