@@ -41,7 +41,12 @@ const GAME_CONFIG = {
   // a "desk" the size of a football field). Uniform per-key correction
   // applied once at load time, before anything is positioned. Keys not
   // listed here default to 1 (already correct scale).
-  modelScaleFixes: {},
+  // exitDoor was exported oversized enough to poke through the walls of
+  // neighboring tiles (it visually "covered" 2-3 rooms at once) — scaled
+  // down to a normal doorway-sized prop.
+  modelScaleFixes: {
+    exitDoor: 0.30,
+  },
 
   // Player controller tuning
   player: {
@@ -107,7 +112,7 @@ const GAME_CONFIG = {
     // streaming, at roughly a third of the geometry/light cost.
     streamRadius: 1,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
-    minTilesFromSpawnForExit: 6, // how many tiles out before an exit/stairwell room can appear
-    exitChancePerEligibleTile: 0.18, // once eligible, chance any given new tile becomes the exit
+    minTilesFromSpawnForExit: 4, // how many tiles out before an exit/stairwell room can appear
+    exitChancePerEligibleTile: 0.35, // once eligible, chance any given new tile becomes the exit
   },
 };
