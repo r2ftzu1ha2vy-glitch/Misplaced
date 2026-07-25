@@ -40,8 +40,8 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 1.6;
     document.getElementById("app").appendChild(renderer.domElement);
 
     window.addEventListener("resize", onResize);
@@ -84,6 +84,8 @@
     roomStreamer = new RoomStreamer(scene, assets, lighting, atmosphere, onWin);
     const result = roomStreamer.buildInitial();
     colliders = result.colliders;
+
+    console.log(`[MISPLACED] Fixtures registered: ${lighting.fixtures.length}, first fixture intensity: ${lighting.fixtures[0] ? lighting.fixtures[0].light.intensity : "none"}, decay: ${lighting.fixtures[0] ? lighting.fixtures[0].light.decay : "none"}`);
 
     player.position.copy(result.spawnPoint);
     player.position.y = GAME_CONFIG.player.eyeHeight;
@@ -130,6 +132,7 @@
   }
 
   window.addEventListener("DOMContentLoaded", async () => {
+    console.log("%c[MISPLACED] main.js build: lighting-fix-v2 (decay=1, exposure=1.6, Reinhard)", "color:#0f0;font-size:14px;font-weight:bold");
     init();
 
     const startBtn = document.getElementById("startBtn");
