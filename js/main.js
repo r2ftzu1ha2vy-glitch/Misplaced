@@ -156,6 +156,44 @@
 
     const startBtn = document.getElementById("startBtn");
     const titlecard = document.getElementById("titlecard");
+    const menuMusic = document.getElementById("menuMusic");
+
+    // Autoplay-with-sound is blocked by browsers until a user gesture, so
+    // this best-effort play() will usually get rejected on first load —
+    // that's expected and silently ignored. The one-time listener below
+    // catches the player's very first tap/click ANYWHERE on the page
+    // (which happens before they've necessarily clicked "CLICK TO ENTER")
+    // and starts the music then instead, so it's never stuck silent.
+    const tryPlayMenuMusic = () => {
+      if (!menuMusic) return;
+      menuMusic.volume = 0.55;
+      const p = menuMusic.play();
+      if (p && p.catch) p.catch(() => {});
+    };
+    tryPlayMenuMusic();
+    const firstGestureStart = () => {
+      tryPlayMenuMusic();
+      document.removeEventListener("click", firstGestureStart);
+      document.removeEventListener("touchstart", firstGestureStart);
+    };
+    document.addEventListener("click", firstGestureStart);
+    document.addEventListener("touchstart", firstGestureStart);
+
+    /** Fades menuMusic's volume to 0 over `ms`, then pauses it — used
+     *  when gameplay actually starts so the menu theme doesn't keep
+     *  playing under the level. */
+    const fadeOutMenuMusic = (ms) => {
+      if (!menuMusic || menuMusic.paused) return;
+      const startVol = menuMusic.volume;
+      const startTime = performance.now();
+      const step = (now) => {
+        const t = Math.min((now - startTime) / ms, 1);
+        menuMusic.volume = startVol * (1 - t);
+        if (t < 1) requestAnimationFrame(step);
+        else menuMusic.pause();
+      };
+      requestAnimationFrame(step);
+    };
 
     try {
       await loadAndBuild();
@@ -169,6 +207,7 @@
     startBtn.addEventListener("click", () => {
       titlecard.style.opacity = "0";
       setTimeout(() => (titlecard.style.display = "none"), 1200);
+      fadeOutMenuMusic(1500);
       if (!("ontouchstart" in window)) renderer.domElement.requestPointerLock();
       start();
     });
