@@ -30,17 +30,11 @@ class RoomStreamer {
     this.atmosphere = atmosphere;
     this.onWin = onWin;
 
-    // slots[i] = { group, floorMesh, furnitureGroup, colliders, exitTrigger, tx, tz, roomType,
-    //              sdx, sdz }  where sdx/sdz is the slot's FIXED offset from center (never changes).
     this.slots = [];
-    this._slotByCoord = new Map(); // "tx,tz" -> slot, only valid tiles currently occupying a slot
+    this._slotByCoord = new Map();
 
-    this.colliders = []; // flat list kept in sync for the player controller
+    this.colliders = [];
 
-    // Exit gates are FIXED, permanent locations chosen once up front (not
-    // random per-tile rolls anymore) — see _computeExitGateCoords. A tile
-    // that matches one of these coords is always the exit room, forever,
-    // whether it's being built for the first time or the hundredth.
     this.exitGateCoords = this._computeExitGateCoords();
     this._exitCoordKeys = new Set(this.exitGateCoords.map((c) => this.tileKey(c.tx, c.tz)));
 
@@ -50,24 +44,14 @@ class RoomStreamer {
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
   }
 
-  /** Picks GAME_CONFIG.floor1.exitGateCount fixed tile coordinates, each
-   *  between minTilesFromSpawnForExit and maxTilesFromSpawnForExit tiles
-   *  from spawn (Chebyshev distance, matching _distFromSpawnTiles), and at
-   *  least minTilesFromSpawnForExit tiles apart from every other chosen
-   *  gate — so no two gates can ever be close together either. Uses a
-   *  fixed seed so the same 4 spots are chosen every run. */
   _computeExitGateCoords() {
     const { minTilesFromSpawnForExit: minD, maxTilesFromSpawnForExit: maxD, exitGateCount } = GAME_CONFIG.floor1;
-    const rng = Utils.makeRng(0xE817E17E); // fixed seed: same gate layout every game
+    const rng = Utils.makeRng(0xE817E17E);
     const coords = [];
     let attempts = 0;
 
     while (coords.length < exitGateCount && attempts < 5000) {
       attempts++;
-      // Random point in an annulus [minD, maxD] around spawn, then snap to
-      // the tile grid — picking angle+radius (not raw x/z) keeps the
-      // distance-from-spawn distribution even instead of clumping into
-      // the corners of a square ring.
       const angle = rng() * Math.PI * 2;
       const radius = minD + rng() * (maxD - minD);
       const tx = Math.round(Math.cos(angle) * radius);
@@ -85,6 +69,7 @@ class RoomStreamer {
     }
 
     return coords;
+  }
 
   worldToTile(x, z) {
     const size = GAME_CONFIG.floor1.tileSize;
@@ -98,8 +83,6 @@ class RoomStreamer {
     return tx + "," + tz;
   }
 
-  /** Initial build: allocate the fixed grid of shells and furnish them
-   *  for the tiles around spawn. Runs during the loading screen. */
   buildInitial() {
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
     this._allocateSlots();
@@ -109,9 +92,6 @@ class RoomStreamer {
     return { colliders: this.colliders, spawnPoint: this.spawnPoint };
   }
 
-  /** Creates the fixed set of shell Groups once. Their local slot offsets
-   *  (sdx, sdz) never change again — only which tile a slot represents,
-   *  and the shell's world position, change as the player moves. */
   _allocateSlots() {
     const radius = GAME_CONFIG.floor1.streamRadius;
     for (let sdx = -radius; sdx <= radius; sdx++) {
@@ -128,9 +108,9 @@ class RoomStreamer {
           floorMesh: shell.floorMesh,
           shellColliders: shell.colliders,
           furnitureGroup,
-          colliders: [],       // furniture colliders only, currently active
+          colliders: [],
           exitTrigger: null,
-          ceilingLights: [],   // THREE.Light refs, for lighting.unregisterFixture
+          ceilingLights: [],
           tx: null,
           tz: null,
           roomType: null,
@@ -140,7 +120,6 @@ class RoomStreamer {
     }
   }
 
-  /** Call every frame (cheap early-out) with the player's world position. */
   update(playerPos) {
     const { tx, tz } = this.worldToTile(playerPos.x, playerPos.z);
     if (tx !== this._centerTx || tz !== this._centerTz) {
@@ -150,9 +129,6 @@ class RoomStreamer {
     }
   }
 
-  /** Returns true + fires onWin once if the player is standing in the exit
-   *  trigger of ANY of the 4 permanent exit gates that currently happen to
-   *  be loaded into a slot. */
   checkExitTrigger(playerPos) {
     for (const gate of this.exitGateCoords) {
       const key = this.tileKey(gate.tx, gate.tz);
@@ -160,11 +136,6 @@ class RoomStreamer {
       if (!slot || !slot.exitTrigger) continue;
 
       const size = GAME_CONFIG.floor1.tileSize;
-      // The exit room's furniture (including its trigger point) is rotated
-      // per-tile (see _pickRoomRotation), so the trigger's local point must
-      // be rotated the same amount before being placed in world space —
-      // otherwise the trigger stays fixed to the tile's un-rotated corner
-      // while the door itself visibly moves.
       const rotationY = slot.furnitureGroup ? slot.furnitureGroup.rotation.y : 0;
       const cos = Math.cos(rotationY);
       const sin = Math.sin(rotationY);
@@ -183,12 +154,6 @@ class RoomStreamer {
     return false;
   }
 
-  /** Re-centers the fixed grid on the new (this._centerTx, this._centerTz):
-   *  every slot's world position moves to (center + its fixed sdx/sdz),
-   *  and any slot whose new tile differs from what it was previously
-   *  showing gets re-skinned + re-furnished for that tile. Slots whose
-   *  tile hasn't changed (the vast majority when moving one tile at a
-   *  time) are left completely untouched — no geometry work at all. */
   _recenter() {
     const size = GAME_CONFIG.floor1.tileSize;
     this._slotByCoord.clear();
@@ -197,8 +162,6 @@ class RoomStreamer {
       const newTx = this._centerTx + slot.sdx;
       const newTz = this._centerTz + slot.sdz;
 
-      // Always reposition (cheap) — the shell's world slot follows the
-      // player even if its contents don't need to change.
       slot.group.position.set(newTx * size, 0, newTz * size);
 
       const tileChanged = slot.tx !== newTx || slot.tz !== newTz;
@@ -228,10 +191,8 @@ class RoomStreamer {
   }
 
   _pickRoomType(tx, tz, rng) {
-    if (tx === 0 && tz === 0) return "cubicleFarm"; // spawn always a known-safe room
+    if (tx === 0 && tz === 0) return "cubicleFarm";
 
-    // Fixed, permanent gates — always the exit room whenever this exact
-    // tile is built, no randomness and no "already placed" flag needed.
     if (this._exitCoordKeys.has(this.tileKey(tx, tz))) return "exit";
 
     const roll = rng();
@@ -242,21 +203,11 @@ class RoomStreamer {
     return "archive";
   }
 
-  /** Every room's 4 walls all have an identical centered doorway, so the
-   *  furniture inside can be rotated a quarter-turn at a time without ever
-   *  blocking a doorway or looking asymmetric from outside — this gives 4
-   *  distinct-feeling variants (0/90/180/270) of the same room type instead
-   *  of every cubicleFarm/meetingRoom/etc tile looking identical. */
   _pickRoomRotation(tx, tz, rng) {
-    const steps = Math.floor(rng() * 4); // 0..3
+    const steps = Math.floor(rng() * 4);
     return steps * (Math.PI / 2);
   }
 
-  /** Clears whatever furniture a slot currently has and rebuilds it for
-   *  (tx, tz): re-skins the shared floor material and refills the
-   *  slot's furnitureGroup, without touching wall/ceiling/floor geometry
-   *  (that part of the shell is permanent and shared across every tile
-   *  that ever occupies this slot). */
   _furnishSlot(slot, tx, tz) {
     this._clearSlotFurniture(slot);
 
@@ -265,8 +216,6 @@ class RoomStreamer {
     const roomType = this._pickRoomType(tx, tz, rng);
     const rotationY = this._pickRoomRotation(tx, tz, rng);
 
-    // Re-skin the shared floor slab for this room type instead of
-    // rebuilding it.
     slot.floorMesh.material = RoomTiles.floorMatForRoomType(roomType);
 
     slot.furnitureGroup.position.set(0, 0, 0);
@@ -301,24 +250,14 @@ class RoomStreamer {
     slot.colliders = result.colliders || [];
     slot.exitTrigger = result.exitTrigger || null;
 
-    // Ceiling lights are added straight into furnitureGroup by
-    // addCeilingLight() (via lighting.registerFixture), so any
-    // PointLights among furnitureGroup's children are this slot's
-    // fixtures — track them so _clearSlotFurniture can unregister them
-    // next time this slot gets re-furnished.
     slot.ceilingLights = [];
     slot.furnitureGroup.traverse((n) => {
       if (n.isLight) slot.ceilingLights.push(n);
     });
   }
 
-  /** Disposes this slot's current furniture (geometry/materials),
-   *  unregisters its ceiling light(s) from the lighting system, and
-   *  forgets its atmosphere-eligible objects — mirroring what the old
-   *  per-tile _unloadTile() used to do, but scoped to just the
-   *  furnitureGroup instead of the whole shell. */
   _clearSlotFurniture(slot) {
-    if (slot.tx === null) return; // nothing built yet
+    if (slot.tx === null) return;
 
     for (const light of slot.ceilingLights) {
       this.lighting.unregisterFixture(light);
@@ -347,8 +286,8 @@ class RoomStreamer {
   _rebuildColliderList() {
     const list = [];
     for (const slot of this.slots) {
-      list.push(...slot.shellColliders); // floor + walls, shared per slot
-      list.push(...slot.colliders);      // current furniture
+      list.push(...slot.shellColliders);
+      list.push(...slot.colliders);
     }
     this.colliders = list;
   }
