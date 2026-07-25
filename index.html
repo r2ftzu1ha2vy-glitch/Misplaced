@@ -120,6 +120,13 @@
     max-width: 480px; text-align: center; line-height: 1.8;
   }
 
+  #fadeOverlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: #000; opacity: 0; pointer-events: none;
+    transition: opacity 1.1s ease;
+  }
+  #fadeOverlay.show { opacity: 1; }
+
   #titlecard h1.imgtitle {
     width: min(80vw, 480px);
     height: auto;
@@ -222,6 +229,8 @@
     <h1>FLOOR CLEARED</h1>
     <div class="sub">You found the stairwell.<br/>Floor 2 is still under construction — thanks for playing this far.</div>
   </div>
+
+  <div id="fadeOverlay"></div>
 </div>
 
 <!-- Three.js via CDN (no npm/bundler) -->
