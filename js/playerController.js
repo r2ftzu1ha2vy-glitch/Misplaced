@@ -299,8 +299,8 @@ class PlayerController {
 
     const targetSpeed = this.isCrouching ? cfg.crouchSpeed : (this.isSprinting ? cfg.sprintSpeed : cfg.walkSpeed);
 
-    const forward = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).multiplyScalar(-1);
-    const right = new THREE.Vector3(Math.sin(this.yaw + Math.PI / 2), 0, Math.cos(this.yaw + Math.PI / 2));
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const wishDir = new THREE.Vector3()
       .addScaledVector(forward, -iz)
@@ -412,7 +412,7 @@ class PlayerController {
       Math.sin(this.pitch),
       -Math.cos(this.yaw) * cosPitch
     );
-    const right = new THREE.Vector3(Math.sin(this.yaw + Math.PI / 2), 0, Math.cos(this.yaw + Math.PI / 2));
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const move = new THREE.Vector3()
       .addScaledVector(forward, -iz)
