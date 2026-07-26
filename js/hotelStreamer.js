@@ -58,6 +58,11 @@ class HotelStreamer {
     this._allocateSlots();
     this._centerSeg = 0;
     this._furnishAllSlots();
+    // See enterRoom() below for the full explanation — same fix, same
+    // reason: the player is placed via a ground-height raycast against
+    // these colliders before the first render() pass would otherwise
+    // have resolved their matrixWorld.
+    for (const slot of this.slots) slot.group.updateMatrixWorld(true);
     return { colliders: this.colliders, spawnPoint: this.spawnPoint };
   }
 
@@ -209,6 +214,17 @@ class HotelStreamer {
 
     const rng = Utils.makeRng(Utils.seedFromCoords(Math.round(corridorReturnWorldPos.z), roomType.length));
     const result = HotelRooms.build(roomType, this.roomGroup, this.assets, this.lighting, rng);
+
+    // Newly-added meshes only get a correct matrixWorld once the
+    // renderer's next render() pass walks the scene graph — but the
+    // caller immediately raycasts against these colliders (via
+    // PlayerController._groundHeightAt) to place the player at floor
+    // height BEFORE that first render happens. Without this explicit
+    // update, the raycast runs against stale (often identity/origin)
+    // world matrices and misses the real floor, which is what caused
+    // the player to spawn floating near the doorway/lintel instead of
+    // standing on the room floor.
+    this.roomGroup.updateMatrixWorld(true);
 
     this.inRoom = true;
     this.roomColliders = result.colliders;
