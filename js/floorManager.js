@@ -68,31 +68,35 @@ class FloorManager {
    *  the fade-in transition has visually finished. Optionally shows a
    *  title-card message (e.g. "FLOOR 2 — THE HOTEL") for the duration
    *  of the black screen. */
-  async _fadeTransition({ duringBlack, titleText, holdMs }) {
-    this._fading = true;
-    const fadeMs = 1000; // 1s fade in / 1s fade out, per spec
+async _fadeTransition({ duringBlack, titleText, holdMs }) {
+  this._fading = true;
+  const fadeMs = 1000;
 
-    if (this._fadeEl) this._fadeEl.classList.add("show");
-    await _wait(fadeMs);
+  if (this._fadeEl) this._fadeEl.classList.add("show");
+  await _wait(fadeMs);
 
-    if (titleText && this._transitionCardEl) {
-      this._transitionCardEl.textContent = titleText;
-      this._transitionCardEl.classList.add("show");
-    }
-
-    if (duringBlack) duringBlack();
-
-    await _wait(holdMs != null ? holdMs : 250);
-
-    if (titleText && this._transitionCardEl) {
-      this._transitionCardEl.classList.remove("show");
-    }
-
-    if (this._fadeEl) this._fadeEl.classList.remove("show");
-    await _wait(fadeMs);
-
-    this._fading = false;
+  if (titleText && this._transitionCardEl) {
+    this._transitionCardEl.textContent = titleText;
+    this._transitionCardEl.classList.add("show");
   }
+
+  try {
+    if (duringBlack) duringBlack();
+  } catch (e) {
+    Utils.logError("Error during fade transition: " + (e && e.message ? e.message : e));
+  }
+
+  await _wait(holdMs != null ? holdMs : 250);
+
+  if (titleText && this._transitionCardEl) {
+    this._transitionCardEl.classList.remove("show");
+  }
+
+  if (this._fadeEl) this._fadeEl.classList.remove("show");
+  await _wait(fadeMs);
+
+  this._fading = false;
+}
 
   // ---------------------------------------------------------------
   // Floor 1 -> Floor 2 lobby
