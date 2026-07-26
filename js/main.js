@@ -50,20 +50,25 @@
 
   /**
    * Applies deviceTier to the handful of settings that actually move the
-   * needle on frame cost: Floor 1's lookahead extension length. The
-   * fixed core (player tile + 4 neighbors) always stays put — only how
-   * far the lookahead reaches in the current walking direction scales
-   * down per tier. Called immediately, before the renderer even exists,
-   * since scene/fog/camera setup below already reads
-   * GAME_CONFIG.floor1.lookaheadTiles. Floor 2's smaller/simpler
-   * corridor segments are left alone since they weren't the reported
-   * problem area.
+   * needle on frame cost: how many of Floor 1's 3x3 grid tiles get their
+   * furniture rebuilt per frame after a move. The grid itself (every
+   * tile touching the player, diagonals included) always stays the same
+   * size on every tier — shrinking it is what used to leave diagonal
+   * tiles visibly unstreamed through doorways. Weaker devices instead
+   * get a smaller per-frame furnish budget, spreading the same rebuild
+   * work over more frames (a touch more delay before a freshly entered
+   * edge tile is fully dressed, but that tile is still off past the fog
+   * line when it happens). Called immediately, before the renderer even
+   * exists, since roomStreamer.js reads GAME_CONFIG.floor1.furnishPerFrame
+   * every frame via _processFurnishQueue.
    */
   function applyDeviceTierConfig(tier) {
     if (tier === "low") {
-      GAME_CONFIG.floor1.lookaheadTiles = 1; // just 1 tile ahead, no extra reach
+      GAME_CONFIG.floor1.furnishPerFrame = 1;
+    } else if (tier === "mid") {
+      GAME_CONFIG.floor1.furnishPerFrame = 2;
     } else {
-      GAME_CONFIG.floor1.lookaheadTiles = 2; // mid/high: unchanged default
+      GAME_CONFIG.floor1.furnishPerFrame = 3; // high: unchanged default
     }
   }
 
@@ -74,7 +79,7 @@
     scene = new THREE.Scene();
     // Fog far is intentionally close to the stream radius edge so newly
     // streamed-in tiles fade in through fog rather than visibly popping.
-    const streamEdge = GAME_CONFIG.floor1.tileSize * (2.5); // core+lookahead reaches ~2 tiles out at most
+    const streamEdge = GAME_CONFIG.floor1.tileSize * (2.5); // 3x3 grid reaches 1 tile out in every direction
     scene.fog = new THREE.Fog(
       GAME_CONFIG.atmosphere.fogColor,
       GAME_CONFIG.atmosphere.fogNear,
