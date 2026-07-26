@@ -11,6 +11,7 @@
 (function () {
   let scene, camera, renderer, clock;
   let player, lighting, atmosphere, roomStreamer;
+  let floorManager;
   let audioListener;
   let colliders = [];
   let running = false;
@@ -113,10 +114,28 @@
     player.position.copy(result.spawnPoint);
     player.position.y = GAME_CONFIG.player.eyeHeight;
 
+    floorManager = new FloorManager({ scene, assets, lighting, atmosphere, player, camera });
+    floorManager.initFloor1(roomStreamer);
+    floorManager.onWin(onWin);
+
+    // Floor 2's hotel assets aren't needed until the player actually
+    // reaches Floor 1's exit gate, so load them quietly in the
+    // background after the title screen is already interactive rather
+    // than blocking it — by the time anyone crosses the office and
+    // finds a gate, this has almost certainly finished.
+    assets.loadFloor2().catch((e) =>
+      Utils.logError("Failed to background-load Floor 2 assets: " + (e && e.message ? e.message : e))
+    );
+
     return assets;
   }
 
   function onWin() {
+    // Called only for the TRUE end-of-game win — finding the access
+    // card at the end of Floor 2's hotel corridor. The Floor 1 exit
+    // gate no longer calls this directly; it hands off to
+    // floorManager.goToLobby() instead (see roomStreamer.checkExitTrigger
+    // usage below), which is Floor 2's own scene transition, not a win.
     if (hasWon) return;
     hasWon = true;
     running = false;
@@ -125,11 +144,6 @@
     const fadeEl = document.getElementById("fadeOverlay");
     const winEl = document.getElementById("winscreen");
 
-    // Fade to black first (the door "closing" behind the player), THEN
-    // reveal the message underneath — once Floor 2 exists, this same
-    // fade-in is the natural hook point to swap scenes instead of
-    // showing winEl: rebuild the level for Floor 2 while the screen is
-    // black, then fade back out.
     if (fadeEl) {
       fadeEl.classList.add("show");
       setTimeout(() => {
@@ -150,14 +164,16 @@
 
     player.update(dt);
     lighting.update(dt);
-    atmosphere.update(dt, player.position);
+    // Atmosphere (flicker/topple/nudge events) is Floor 1 flavor only —
+    // Floor 2's hotel plays it much calmer, so this only keeps running
+    // while still on Floor 1.
+    if (!floorManager || floorManager.state === "floor1") {
+      atmosphere.update(dt, player.position);
+    }
 
-    if (roomStreamer) {
-      roomStreamer.update(player.position);
-      colliders = roomStreamer.colliders; // keep the getter's backing array current
-      if (roomStreamer.checkExitTrigger(player.position)) {
-        onWin();
-      }
+    if (floorManager) {
+      floorManager.update(dt, player.position);
+      colliders = floorManager.getColliders(); // keep the getter's backing array current
     }
 
     renderer.render(scene, camera);
