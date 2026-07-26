@@ -245,7 +245,11 @@ class HotelStreamer {
   checkRoomExitTrigger(playerPos) {
     if (!this.inRoom || !this.roomExitInfo) return false;
     const d = playerPos.distanceTo(this.roomExitInfo.doorLocalWorld);
-    return d <= 1.2;
+    // Widened past the doorway's own width so the whole opening counts,
+    // not just its exact center point (hugging either side of the frame
+    // used to put you outside a narrower radius while still visually
+    // "at the door").
+    return d <= 2.0;
   }
 
   /** Reverses enterRoom(): disposes the room group, restores the
