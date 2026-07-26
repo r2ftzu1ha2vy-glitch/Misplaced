@@ -120,6 +120,29 @@
     max-width: 480px; text-align: center; line-height: 1.8;
   }
 
+  #deathscreen {
+    position: fixed; inset: 0; z-index: 200;
+    background: #050505;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    color: #b3392f;
+    opacity: 0; transition: opacity 1.4s ease;
+    cursor: pointer;
+  }
+  #deathscreen.show { display: flex; opacity: 1; }
+  #deathscreen h1 {
+    font-weight: 300; font-size: 2.1em; letter-spacing: 0.22em;
+    margin: 0 0 10px 0; color: #c14a3c;
+  }
+  #deathscreen .sub {
+    font-size: 0.8em; letter-spacing: 0.2em; color: var(--ui-dim);
+    max-width: 480px; text-align: center; line-height: 1.8;
+  }
+  #deathscreen .prompt {
+    margin-top: 26px; font-size: 0.75em; letter-spacing: 0.2em;
+    color: var(--ui-dim); border: 1px solid rgba(255,255,255,0.15);
+    padding: 10px 22px; text-transform: uppercase;
+  }
+
   #fadeOverlay {
     position: fixed; inset: 0; z-index: 300;
     background: #000; opacity: 0; pointer-events: none;
@@ -306,12 +329,19 @@
     <div class="sub">You found the card.<br/>Thanks for playing MISPLACED.</div>
   </div>
 
+  <div id="deathscreen">
+    <h1 id="deathTitle">YOU DIED</h1>
+    <div class="sub" id="deathSub">Something in the dark found you first.</div>
+    <div class="prompt">CLICK TO TRY AGAIN</div>
+  </div>
+
   <div id="fadeOverlay"></div>
   <div id="transitionCard"></div>
 </div>
 
 <!-- Three.js via CDN (no npm/bundler) -->
 <audio id="menuMusic" src="assets/audio/Menu.mp3" loop preload="auto"></audio>
+<audio id="deathSound" src="assets/audio/universfield-body-fall-259680.mp3" preload="auto"></audio>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
@@ -329,6 +359,7 @@
 <script src="js/hotelCorridor.js"></script>
 <script src="js/hotelRooms.js"></script>
 <script src="js/hotelStreamer.js"></script>
+<script src="js/monsterSystem.js"></script>
 <script src="js/floorManager.js"></script>
 <script src="js/cheatSystem.js"></script>
 <script src="js/main.js"></script>
