@@ -108,18 +108,27 @@ const GAME_CONFIG = {
   // Monster AI tuning. See js/monsterSystem.js for behavior.
   monsters: {
     // N-tity ("Entity") — Floor 1. Lives in the 6-cabinet server room.
-    // Stepping into that room teleports it in and it hunts at full
-    // speed; if the player makes it out of the room it keeps chasing
-    // but 25% slower everywhere else, until it either catches them or
-    // loses them.
+    // Stepping into that room spawns it in off to one side, wandering
+    // blind, until it actually sees the player (within sightRadius AND
+    // inside its forward fovDegrees cone for noticeTime seconds) — then
+    // it hunts at chaseSpeed; if the player makes it out of the room it
+    // keeps chasing but slower everywhere else, until it either catches
+    // them or loses them.
     ntity: {
       modelKey: "scp096",
       homeRoomType: "serverRoom", // the room type with 6 file cabinets
-      fastSpeed: 3.6,             // m/s, inside its home room
+      spawnLeadDistance: 6,       // how far from the player it spawns when entering the room
+      wanderRadius: 5,            // stays within this radius of its spawn point while wandering
+      wanderSpeed: 1.2,           // m/s while wandering blind
+      wanderPauseMin: 1.0,        // idle pause (seconds) between wander legs
+      wanderPauseMax: 2.5,
+      sightRadius: 9,             // how far it can see the player at all
+      fovDegrees: 100,            // forward vision cone width
+      noticeTime: 0.6,            // seconds player must stay seen before it starts hunting
+      chaseSpeed: 3.6,            // m/s, inside its home room once hunting
       slowSpeedMultiplier: 0.75,  // 25% slower everywhere else
       catchRadius: 0.9,
       giveUpDistance: 34,         // outside its room, past this range it gives up and vanishes
-      teleportLeadDistance: 2.4,  // how far from the player it appears when it teleports in
       roarCooldown: 6,
     },
     // Ghoxt — Floor 2's ghost. Only ever lurks inside hotel room
