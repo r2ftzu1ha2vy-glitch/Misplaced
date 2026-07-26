@@ -238,6 +238,10 @@
 
     CheatSystem.update(dt);
 
+    if (Multiplayer.isConnected()) {
+      Multiplayer.update(dt);
+    }
+
     renderer.render(scene, camera);
     if (running) requestAnimationFrame(animate);
   }
@@ -248,8 +252,128 @@
     animate();
   }
 
+  /** Wires up the "MULTIPLAYER" button + its create/join modal on the
+   *  title card. Purely UI/flow — the actual networking lives in
+   *  multiplayer.js. Connecting happens as soon as a room is settled
+   *  (either right after creating one, or right after a valid join),
+   *  independent of whether the player has clicked "CLICK TO ENTER"
+   *  yet, so position sync is already live the moment gameplay starts. */
+  function initMultiplayerMenu() {
+    const mpBtn = document.getElementById("multiplayerBtn");
+    const modal = document.getElementById("mpModal");
+    const choiceRow = document.getElementById("mpChoiceRow");
+    const choiceCreate = document.getElementById("mpChoiceCreate");
+    const choiceJoin = document.getElementById("mpChoiceJoin");
+    const createPane = document.getElementById("mpCreatePane");
+    const joinPane = document.getElementById("mpJoinPane");
+    const createdCodeEl = document.getElementById("mpCreatedCode");
+    const createStatusEl = document.getElementById("mpCreateStatus");
+    const createStartBtn = document.getElementById("mpCreateStartBtn");
+    const codeInput = document.getElementById("roomCodeInput");
+    const joinStatusEl = document.getElementById("mpJoinStatus");
+    const joinStartBtn = document.getElementById("mpJoinStartBtn");
+    const closeBtn = document.getElementById("mpCloseBtn");
+    const badge = document.getElementById("mpBadge");
+    if (!mpBtn || !modal) return;
+
+    const resetModal = () => {
+      choiceRow.style.display = "flex";
+      createPane.style.display = "none";
+      joinPane.style.display = "none";
+      createStatusEl.textContent = "Share this code with your friend, then press start once they've joined.";
+      joinStatusEl.textContent = "";
+      joinStatusEl.classList.remove("error");
+      joinStartBtn.classList.add("disabled");
+      codeInput.value = "";
+    };
+
+    const updateBadge = () => {
+      if (!badge) return;
+      if (Multiplayer.isConnected()) {
+        badge.textContent = `ROOM ${Multiplayer.getRoomCode()} — ${Multiplayer.getPlayerCount()} ONLINE`;
+        badge.classList.add("show");
+      } else {
+        badge.classList.remove("show");
+      }
+    };
+
+    mpBtn.addEventListener("click", () => {
+      resetModal();
+      modal.classList.add("show");
+    });
+    closeBtn.addEventListener("click", () => modal.classList.remove("show"));
+
+    choiceCreate.addEventListener("click", async () => {
+      choiceRow.style.display = "none";
+      createPane.style.display = "flex";
+      createdCodeEl.textContent = "• • • •";
+      try {
+        const code = await Multiplayer.createRoom();
+        createdCodeEl.textContent = code.split("").join(" ");
+        await Multiplayer.connect(code, scene, {
+          getPosition: () => player.position,
+          getYaw: () => player.yaw,
+          getFloorLabel: () => (floorManager ? floorManager.state : ""),
+        }, { onRosterChange: (n) => updateBadge() });
+        updateBadge();
+        createStatusEl.textContent = "Room ready. Your friend can join with this code any time.";
+      } catch (e) {
+        createStatusEl.textContent = e && e.message ? e.message : "Couldn't create a room.";
+        createStatusEl.classList.add("error");
+        Utils.logError("Multiplayer create failed: " + (e && e.message ? e.message : e));
+      }
+    });
+
+    createStartBtn.addEventListener("click", () => {
+      modal.classList.remove("show");
+    });
+
+    choiceJoin.addEventListener("click", () => {
+      choiceRow.style.display = "none";
+      joinPane.style.display = "flex";
+      codeInput.focus();
+    });
+
+    codeInput.addEventListener("input", () => {
+      codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      joinStartBtn.classList.toggle("disabled", codeInput.value.length !== GAME_CONFIG.multiplayer.roomCodeLength);
+      joinStatusEl.textContent = "";
+      joinStatusEl.classList.remove("error");
+    });
+
+    const attemptJoin = async () => {
+      const code = codeInput.value.trim();
+      if (code.length !== GAME_CONFIG.multiplayer.roomCodeLength) return;
+      joinStatusEl.textContent = "Checking code…";
+      joinStatusEl.classList.remove("error");
+      try {
+        const exists = await Multiplayer.roomExists(code);
+        if (!exists) {
+          joinStatusEl.textContent = `No room "${code}" found.`;
+          joinStatusEl.classList.add("error");
+          return;
+        }
+        await Multiplayer.connect(code, scene, {
+          getPosition: () => player.position,
+          getYaw: () => player.yaw,
+          getFloorLabel: () => (floorManager ? floorManager.state : ""),
+        }, { onRosterChange: (n) => updateBadge() });
+        updateBadge();
+        joinStatusEl.textContent = `Joined room ${code}.`;
+        setTimeout(() => modal.classList.remove("show"), 500);
+      } catch (e) {
+        joinStatusEl.textContent = e && e.message ? e.message : "Couldn't join that room.";
+        joinStatusEl.classList.add("error");
+        Utils.logError("Multiplayer join failed: " + (e && e.message ? e.message : e));
+      }
+    };
+    joinStartBtn.addEventListener("click", attemptJoin);
+    codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") attemptJoin(); });
+  }
+
   window.addEventListener("DOMContentLoaded", async () => {
     init();
+    initMultiplayerMenu();
 
     const startBtn = document.getElementById("startBtn");
     const titlecard = document.getElementById("titlecard");
