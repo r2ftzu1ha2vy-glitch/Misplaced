@@ -33,7 +33,7 @@ const GAME_CONFIG = {
     retroComputer:      "retro_computer.glb",
     scp096:             "scp-096_-_true_hd_sound_mod.glb", // model only for now, audio skipped
     whiteboard:         "whiteboard.glb",
-    exitDoor:           "metal_door.glb",
+    exitDoor:           "access_card.glb",
   },
 
   // A handful of these Sketchfab/FBX exports bake in wrong real-world
@@ -115,5 +115,66 @@ const GAME_CONFIG = {
     minTilesFromSpawnForExit: 20, // min tiles out an exit gate can be placed
     maxTilesFromSpawnForExit: 50, // max tiles out an exit gate can be placed
     exitGateCount: 4,             // how many permanent exit gates exist on the floor
+  },
+
+  // Floor 2 — The Hotel. A small fixed "lobby" (reception + 2 elevators)
+  // that the player spawns into after leaving Floor 1, and an endless
+  // corridor (same streamed-tile approach as Floor 1) with doors left
+  // and right leading into one of 5 hotel room interiors. The corridor
+  // is only entered after riding an elevator up from the lobby.
+  assetBasePathFloor2: "assets/floor2/",
+  modelsFloor2: {
+    receptionDesk:  "reception_desk.glb",
+    elevatorDoor:   "elevator_door.glb",
+    woodenDoor:     "wooden_door.glb",
+    sofa:           "sofa.glb",
+    chandelier:     "chandelier.glb",
+    nightstand:     "nightstand.glb",
+    gothicBed:      "gothic_bed.glb",
+    curtain:        "curtain.glb",
+    paintingLow:    "painting_lowpoly.glb",
+    paintingBek2:   "painting_beksinski_2.glb",
+    paintingBek3:   "painting_beksinski_3.glb",
+    accessCard:     "access_card.glb",
+  },
+  // Same idea as modelScaleFixes above but for the floor2 model set —
+  // several of these Sketchfab exports also bake in oversized real-world
+  // scale (verified against each model's true, node-transform-composed
+  // bounding box — several exports bake extra scale into a child node's
+  // matrix rather than the mesh itself, so a naive look at raw vertex
+  // coordinates undercounts or overcounts the real size).
+  // gothicBed, curtain, elevatorDoor, chandelier, paintingLow are already
+  // correctly real-world-scaled as exported and need no fix.
+  modelScaleFixesFloor2: {
+    sofa: 0.025,          // raw ~39x38x80 -> ~0.98x0.95x2.0m sofa
+    nightstand: 0.0056,   // 100x baked into child node -> ~0.55m tall
+    paintingBek2: 0.374,  // raw ~0.24x2.84x3.47 -> ~1.3m tall wall piece
+    paintingBek3: 0.258,  // raw ~3.9x5.0x0.58 -> ~1.3m tall wall piece
+    accessCard: 0.0065,   // raw ~8x14x1.1 -> ~0.09m long, credit-card scale
+    receptionDesk: 0.644, // raw height 1.63 -> ~1.05m counter height
+    woodenDoor: 0.354,    // raw height 6.2 -> ~2.2m doorway height
+  },
+
+  hotelLobby: {
+    width: 16,
+    depth: 18,
+    wallHeight: 3.2,
+    elevatorZ: -7,
+    elevatorSpacingX: 3.2,
+    elevatorDoorWidth: 2.0,
+    elevatorDoorHeight: 2.4,
+    spawnPoint: { x: 0, z: 6 },
+  },
+
+  hotelCorridor: {
+    tileSize: 8,
+    corridorWidth: 3.2,
+    wallHeight: 2.9,
+    doorWidth: 1.4,
+    doorHeight: 2.3,
+    wallThickness: 0.2,
+    streamRadius: 2,
+    minSegmentsFromStartForCard: 15,
+    maxSegmentsFromStartForCard: 40,
   },
 };
