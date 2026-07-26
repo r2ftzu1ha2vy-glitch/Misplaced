@@ -8,11 +8,16 @@
  * scene/state dispatch.
  *
  *  N-tity (NtityAI): lives in Floor 1's 6-cabinet "server room". The
- *  moment the player steps into that room type, N-tity teleports in
- *  next to them and hunts at full speed. If the player escapes the
- *  room, N-tity keeps chasing into the rest of the office but at 25%
- *  reduced speed, until it either catches the player or the player
- *  puts enough distance between them that it gives up.
+ *  moment the player steps into that room type, N-tity spawns in off
+ *  to one side and wanders blind — it does not know where the player
+ *  is. Only once the player is within its sight radius AND inside its
+ *  forward vision cone for `noticeTime` seconds does it start hunting.
+ *  Its chase speed is kept below the player's own walk speed, so a
+ *  player who notices it first (or breaks line of sight) can outrun
+ *  it; if the player escapes the room, N-tity keeps chasing into the
+ *  rest of the office but slower still, until it either catches the
+ *  player or the player puts enough distance between them that it
+ *  gives up.
  *
  *  Ghoxt (GhoxtAI): only ever lurks inside Floor 2's hotel room
  *  interiors, never the corridor. Each room the player enters has a
@@ -35,14 +40,20 @@ class NtityAI {
 
     this.group = null;
     this.active = false;   // currently spawned & visible in the world
-    this.hunting = false;  // actively chasing the player
+    this.hunting = false;  // actively chasing the player (has noticed them)
     this.inHomeRoom = false;
+
+    // Wander state — active while spawned but not yet hunting.
+    this._homeCenter = null;      // world {x,z} of the room it spawned in, wander stays near here
+    this._wanderTarget = null;    // current {x,z} it's walking toward
+    this._wanderPauseTimer = 0;   // idle pause between wander legs
+    this._sightTimer = 0;         // accumulates while the player is visible; hunting starts at noticeTime
 
     this._roarBuffer = null;
     this._teleportBuffer = null;
     this._footstepBuffer = null;
     this._roarTimer = 0;
-    this._footstepAudio = null; // looping PositionalAudio, only while hunting outside its room
+    this._footstepAudio = null; // looping PositionalAudio while active
     this._bobTime = 0;
 
     this._loadAudio();
@@ -65,15 +76,21 @@ class NtityAI {
     this._despawn();
   }
 
-  _spawnAt(pos, lookAtPos) {
+  _spawnWanderingAt(pos) {
     if (!this.group) {
       this.group = this.assets.get(this.cfg.modelKey, true);
       this.group.name = "Ntity";
     }
     if (!this.group.parent) this.scene.add(this.group);
     this.group.position.set(pos.x, 0, pos.z);
-    if (lookAtPos) this.group.lookAt(lookAtPos.x, this.group.position.y, lookAtPos.z);
+    this.group.rotation.y = Math.random() * Math.PI * 2;
     this.active = true;
+    this.hunting = false;
+    this._homeCenter = { x: pos.x, z: pos.z };
+    this._wanderTarget = null;
+    this._wanderPauseTimer = 0;
+    this._sightTimer = 0;
+    this._startFootsteps();
   }
 
   _despawn() {
@@ -81,7 +98,60 @@ class NtityAI {
     this.active = false;
     this.hunting = false;
     this.inHomeRoom = false;
+    this._homeCenter = null;
+    this._wanderTarget = null;
+    this._sightTimer = 0;
     this._stopFootsteps();
+  }
+
+  /** True if `targetPos` is within sight range AND inside N-tity's
+   *  forward-facing vision cone — sneaking up from behind or staying
+   *  far away both keep it from noticing the player. */
+  _canSee(targetPos) {
+    if (!this.group) return false;
+    const dx = targetPos.x - this.group.position.x;
+    const dz = targetPos.z - this.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > this.cfg.sightRadius || dist < 0.001) return dist <= this.cfg.sightRadius;
+
+    const facing = this.group.rotation.y;
+    // Forward vector matches the lookAt convention used elsewhere in
+    // this file (model's forward is -Z rotated by rotation.y).
+    const fx = -Math.sin(facing), fz = -Math.cos(facing);
+    const toTargetX = dx / dist, toTargetZ = dz / dist;
+    const dot = fx * toTargetX + fz * toTargetZ;
+    const halfFovCos = Math.cos((this.cfg.fovDegrees * Math.PI / 180) / 2);
+    return dot >= halfFovCos;
+  }
+
+  _pickWanderTarget() {
+    const c = this._homeCenter;
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * this.cfg.wanderRadius;
+    return { x: c.x + Math.cos(angle) * r, z: c.z + Math.sin(angle) * r };
+  }
+
+  _updateWander(dt) {
+    if (this._wanderPauseTimer > 0) {
+      this._wanderPauseTimer -= dt;
+      return;
+    }
+    if (!this._wanderTarget) {
+      this._wanderTarget = this._pickWanderTarget();
+    }
+    const dx = this._wanderTarget.x - this.group.position.x;
+    const dz = this._wanderTarget.z - this.group.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist <= 0.25) {
+      // Reached the wander point — pause a beat, then pick a new one.
+      this._wanderTarget = null;
+      this._wanderPauseTimer = Utils.randRange(this.cfg.wanderPauseMin, this.cfg.wanderPauseMax);
+      return;
+    }
+    const nx = dx / dist, nz = dz / dist;
+    this.group.position.x += nx * this.cfg.wanderSpeed * dt;
+    this.group.position.z += nz * this.cfg.wanderSpeed * dt;
+    this.group.rotation.y = Math.atan2(-nx, -nz);
   }
 
   _playOneShot(buffer, volume) {
@@ -130,37 +200,52 @@ class NtityAI {
 
     if (this._roarTimer > 0) this._roarTimer -= dt;
 
-    if (inHomeRoom && !this.hunting) {
-      // Player just walked into the cabinet room — teleport N-tity in.
+    if (inHomeRoom && !this.active) {
+      // Player just walked into the cabinet room — N-tity spawns in,
+      // off to one side, and starts wandering blind. It does NOT know
+      // where the player is yet; it has to actually spot them first.
       const angle = Math.random() * Math.PI * 2;
       const spawnPos = {
-        x: playerPos.x + Math.cos(angle) * this.cfg.teleportLeadDistance,
-        z: playerPos.z + Math.sin(angle) * this.cfg.teleportLeadDistance,
+        x: playerPos.x + Math.cos(angle) * this.cfg.spawnLeadDistance,
+        z: playerPos.z + Math.sin(angle) * this.cfg.spawnLeadDistance,
       };
-      this._spawnAt(spawnPos, playerPos);
-      this.hunting = true;
-      this.inHomeRoom = true;
-      this._stopFootsteps();
-      if (this._roarTimer <= 0) {
-        this._playOneShot(this._teleportBuffer, 1.0);
-        this._playOneShot(this._roarBuffer, 1.0);
-        this._roarTimer = this.cfg.roarCooldown;
+      this._spawnWanderingAt(spawnPos);
+      Utils.logInfo("N-tity has entered the cabinet room and is wandering.");
+    }
+
+    if (!this.active || !this.group) return;
+
+    this.inHomeRoom = inHomeRoom;
+
+    if (!this.hunting) {
+      // --- Wandering / detection phase ---
+      const seen = this._canSee(playerPos);
+      if (seen) {
+        this._sightTimer += dt;
+        if (this._sightTimer >= this.cfg.noticeTime) {
+          this.hunting = true;
+          if (this._roarTimer <= 0) {
+            this._playOneShot(this._roarBuffer, 1.0);
+            this._roarTimer = this.cfg.roarCooldown;
+          }
+          Utils.logInfo("N-tity noticed the player and is now hunting.");
+        }
+      } else {
+        this._sightTimer = Math.max(0, this._sightTimer - dt * 2);
       }
-      Utils.logInfo("N-tity teleported into the cabinet room.");
-    } else if (this.hunting) {
-      const wasInHomeRoom = this.inHomeRoom;
-      this.inHomeRoom = inHomeRoom;
-      if (wasInHomeRoom && !inHomeRoom) {
-        // Player just fled the room — N-tity keeps chasing, slower.
-        this._startFootsteps();
-      } else if (!wasInHomeRoom && inHomeRoom) {
-        this._stopFootsteps();
+
+      if (!this.hunting) {
+        this._updateWander(dt);
+        this._bobTime += dt * 5;
+        this.group.position.y = Math.abs(Math.sin(this._bobTime)) * 0.04;
+        return;
       }
     }
 
-    if (!this.hunting || !this.group) return;
-
-    const speed = this.inHomeRoom ? this.cfg.fastSpeed : this.cfg.fastSpeed * this.cfg.slowSpeedMultiplier;
+    // --- Hunting / chase phase — always slower than the player's
+    // normal walkSpeed so a player who reacts in time can put
+    // distance between them, especially once outside the home room. ---
+    const speed = this.inHomeRoom ? this.cfg.chaseSpeed : this.cfg.chaseSpeed * this.cfg.slowSpeedMultiplier;
     const dx = playerPos.x - this.group.position.x;
     const dz = playerPos.z - this.group.position.z;
     const dist = Math.hypot(dx, dz);
