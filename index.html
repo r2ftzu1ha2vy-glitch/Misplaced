@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>MISPLACED — Floor 1: Office Complex</title>
+<title>MISPLACED</title>
 <style>
   :root{
     --ui-fg: rgba(230,230,225,0.85);
@@ -145,6 +145,15 @@
   }
   #interactPrompt.show { opacity: 1; }
 
+  #cheatToast {
+    position: fixed; top: 18%; left: 50%; transform: translateX(-50%);
+    z-index: 302; color: var(--ui-fg); font-size: 13px; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 10px 20px; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(0,0,0,0.55); pointer-events: none;
+    opacity: 0; transition: opacity 0.3s ease;
+  }
+  #cheatToast.show { opacity: 1; }
+
   #titlecard h1.imgtitle {
     width: min(80vw, 480px);
     max-width: 480px;
@@ -279,6 +288,7 @@
 
   <div id="errorlog"></div>
   <div id="interactPrompt"></div>
+  <div id="cheatToast"></div>
 
   <div id="touchControls">
     <div id="touchJoystickZone">
@@ -320,6 +330,7 @@
 <script src="js/hotelRooms.js"></script>
 <script src="js/hotelStreamer.js"></script>
 <script src="js/floorManager.js"></script>
+<script src="js/cheatSystem.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
