@@ -89,6 +89,80 @@
     height: 100%; width: 0%; background: var(--ui-fg); transition: width 0.2s ease;
   }
 
+  #titlecard .menuRow {
+    display: flex; flex-direction: column; gap: 10px; align-items: center;
+    margin-top: 4px;
+  }
+  #titlecard .prompt.secondary {
+    border-color: rgba(255,255,255,0.1); color: var(--ui-dim); font-size: 0.75em;
+  }
+  #titlecard .prompt.secondary:hover { border-color: var(--ui-accent); color: var(--ui-fg); }
+
+  /* ---------------- Multiplayer modal ---------------- */
+  #mpModal {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(4,4,4,0.88);
+    display: none; align-items: center; justify-content: center;
+    color: var(--ui-fg);
+  }
+  #mpModal.show { display: flex; }
+  #mpModal .mpBox {
+    width: min(90vw, 340px);
+    border: 1px solid rgba(255,255,255,0.15);
+    background: #0a0a0a;
+    padding: 28px 26px;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  #mpModal h2 {
+    font-weight: 300; font-size: 1.1em; letter-spacing: 0.2em;
+    margin: 0; text-transform: uppercase; color: rgba(210,205,200,0.9);
+  }
+  #mpModal .mpChoices {
+    display: flex; gap: 10px; width: 100%;
+  }
+  #mpModal .mpBtn {
+    flex: 1; text-align: center; padding: 12px 8px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.18); font-size: 0.78em;
+    letter-spacing: 0.1em; text-transform: uppercase; transition: all 0.2s;
+  }
+  #mpModal .mpBtn:hover, #mpModal .mpBtn.selected { border-color: var(--ui-accent); color: #fff; }
+  #mpModal input#roomCodeInput {
+    width: 100%; box-sizing: border-box; text-align: center;
+    font-size: 1.6em; letter-spacing: 0.3em; text-transform: uppercase;
+    background: #050505; border: 1px solid rgba(255,255,255,0.2);
+    color: var(--ui-fg); padding: 10px 0; font-family: monospace;
+  }
+  #mpModal input#roomCodeInput:focus { outline: none; border-color: var(--ui-accent); }
+  #mpModal .mpStatus {
+    font-size: 0.72em; letter-spacing: 0.08em; color: var(--ui-dim);
+    min-height: 1.4em; text-align: center;
+  }
+  #mpModal .mpStatus.error { color: #c14a3c; }
+  #mpModal .mpRoomCodeDisplay {
+    font-size: 2.2em; letter-spacing: 0.35em; font-family: monospace;
+    color: var(--ui-fg); text-align: center;
+  }
+  #mpModal .mpGo {
+    width: 100%; text-align: center; padding: 12px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.25); font-size: 0.8em;
+    letter-spacing: 0.15em; text-transform: uppercase; transition: all 0.2s;
+  }
+  #mpModal .mpGo:hover { border-color: var(--ui-accent); color: #fff; }
+  #mpModal .mpGo.disabled { opacity: 0.35; pointer-events: none; }
+  #mpModal .mpClose {
+    font-size: 0.68em; letter-spacing: 0.1em; color: var(--ui-dim);
+    cursor: pointer; text-transform: uppercase; margin-top: 2px;
+  }
+  #mpModal .mpClose:hover { color: var(--ui-fg); }
+
+  #mpBadge {
+    position: fixed; right: 14px; bottom: 20px; z-index: 10;
+    color: var(--ui-dim); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; pointer-events: none; opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #mpBadge.show { opacity: 1; }
+
   #pausehint {
     position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
     color: var(--ui-dim); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
@@ -293,10 +367,40 @@
   <div id="titlecard">
     <img class="imgtitle" src="assets/ui/misplaced_title.png" alt="MISPLACED" />
     <div class="sub">FLOOR 01 — OFFICE COMPLEX</div>
-    <div class="prompt" id="startBtn">CLICK TO ENTER</div>
+    <div class="menuRow">
+      <div class="prompt" id="startBtn">CLICK TO ENTER</div>
+      <div class="prompt secondary" id="multiplayerBtn">MULTIPLAYER</div>
+    </div>
     <div class="loading-status" id="loadingStatus"></div>
     <div class="barwrap"><div class="barfill" id="loadingBar"></div></div>
   </div>
+
+  <div id="mpModal">
+    <div class="mpBox">
+      <h2>Multiplayer</h2>
+
+      <div class="mpChoices" id="mpChoiceRow">
+        <div class="mpBtn" id="mpChoiceCreate">Create Room</div>
+        <div class="mpBtn" id="mpChoiceJoin">Join Room</div>
+      </div>
+
+      <div id="mpCreatePane" style="display:none; width:100%; flex-direction:column; align-items:center; gap:14px;">
+        <div class="mpRoomCodeDisplay" id="mpCreatedCode">— — — —</div>
+        <div class="mpStatus" id="mpCreateStatus">Share this code with your friend, then press start once they've joined.</div>
+        <div class="mpGo" id="mpCreateStartBtn">START</div>
+      </div>
+
+      <div id="mpJoinPane" style="display:none; width:100%; flex-direction:column; align-items:center; gap:14px;">
+        <input id="roomCodeInput" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD" />
+        <div class="mpStatus" id="mpJoinStatus"></div>
+        <div class="mpGo disabled" id="mpJoinStartBtn">JOIN</div>
+      </div>
+
+      <div class="mpClose" id="mpCloseBtn">Cancel</div>
+    </div>
+  </div>
+
+  <div id="mpBadge"></div>
 
   <div id="crosshair"></div>
   <div id="vignette"></div>
@@ -362,6 +466,7 @@
 <script src="js/monsterSystem.js"></script>
 <script src="js/floorManager.js"></script>
 <script src="js/cheatSystem.js"></script>
+<script src="js/multiplayer.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
