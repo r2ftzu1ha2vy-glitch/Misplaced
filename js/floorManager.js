@@ -101,6 +101,12 @@ class FloorManager {
         this.lobbyGroup.name = "HotelLobby";
         this.scene.add(this.lobbyGroup);
         this.lobby = HotelLobby.build(this.lobbyGroup, this.assets, this.lighting);
+        // See hotelStreamer.js's enterRoom() for why this is needed: a
+        // freshly-built group's meshes don't get a valid matrixWorld
+        // until the next render() pass, but the player is about to be
+        // placed here via a ground-height raycast on the very next
+        // frame, before that render happens.
+        this.lobbyGroup.updateMatrixWorld(true);
 
         this.colliders = this.lobby.colliders;
         this.player.position.copy(this.lobby.spawnPoint);
