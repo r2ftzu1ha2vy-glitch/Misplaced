@@ -222,19 +222,24 @@ const GAME_CONFIG = {
     maxSegmentsFromStartForCard: 40,
   },
 
-  // Multiplayer (Firebase Realtime Database)
+ // Multiplayer (Firebase Realtime Database)
   multiplayer: {
-    // Paste your Firebase project's Web SDK config here.
-    // Firebase Console -> Project Settings -> General -> Your apps -> SDK setup and config
     firebaseConfig: {
       apiKey: "AIzaSyCcPQgxbntZI4e2mZU0G7TTfPz4rs-5oUo",
       authDomain: "misplaced-b169e.firebaseapp.com",
-      databaseURL: "https://misplaced-b169e-default-rtdb.firebaseio.com/", // must be Realtime Database, not Firestore
+      databaseURL: "https://misplaced-b169e-default-rtdb.firebaseio.com/",
       projectId: "misplaced-b169e",
     },
-    roomCodeChars: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", // no 0/O/1/I to avoid confusion
+    roomCodeChars: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
     roomCodeLength: 4,
-    sendRateHz: 15,        // how often we push our own position
-    staleTimeoutSec: 8,    // drop a remote player if no update for this long
+    sendRateHz: 15,
+    staleTimeoutSec: 8,
+  },
+
+  // Player avatar model, used for the local player's multiplayer avatar
+  assetBasePathPlayer: "assets/player/",
+  playerModel: {
+    file: "player.glb",
+    scaleFix: 1,
   },
 };
