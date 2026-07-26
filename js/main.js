@@ -16,6 +16,7 @@
   let colliders = [];
   let running = false;
   let hasWon = false;
+  let hasEnded = false; // true once the win OR death screen has fired, guards against double-trigger
 
   function init() {
     scene = new THREE.Scene();
@@ -130,9 +131,10 @@
     player.position.copy(result.spawnPoint);
     player.position.y = GAME_CONFIG.player.eyeHeight;
 
-    floorManager = new FloorManager({ scene, assets, lighting, atmosphere, player, camera });
+    floorManager = new FloorManager({ scene, assets, lighting, atmosphere, player, camera, audioListener });
     floorManager.initFloor1(roomStreamer);
     floorManager.onWin(onWin);
+    floorManager.onDeath(onCaught);
 
     CheatSystem.init(player, floorManager);
 
@@ -145,7 +147,8 @@
     // gate no longer calls this directly; it hands off to
     // floorManager.goToLobby() instead (see roomStreamer.checkExitTrigger
     // usage below), which is Floor 2's own scene transition, not a win.
-    if (hasWon) return;
+    if (hasEnded) return;
+    hasEnded = true;
     hasWon = true;
     running = false;
     document.exitPointerLock && document.exitPointerLock();
@@ -164,6 +167,54 @@
     } else if (winEl) {
       winEl.style.display = "flex";
       requestAnimationFrame(() => winEl.classList.add("show"));
+    }
+  }
+
+  /** Called the instant N-tity or Ghoxt catches the player. `who` is
+   *  "ntity" or "ghoxt" so the death screen can show flavor text for
+   *  whichever one got you. Clicking the death screen reloads the page
+   *  — simplest possible "try again" for a single-life horror loop. */
+  function onCaught(who) {
+    if (hasEnded) return;
+    hasEnded = true;
+    running = false;
+    document.exitPointerLock && document.exitPointerLock();
+
+    const deathSound = document.getElementById("deathSound");
+    if (deathSound) {
+      deathSound.volume = 0.9;
+      deathSound.currentTime = 0;
+      const p = deathSound.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+
+    const fadeEl = document.getElementById("fadeOverlay");
+    const deathEl = document.getElementById("deathscreen");
+    const titleEl = document.getElementById("deathTitle");
+    const subEl = document.getElementById("deathSub");
+
+    if (titleEl && subEl) {
+      if (who === "ghoxt") {
+        titleEl.textContent = "YOU DIED";
+        subEl.textContent = "Ghoxt was waiting in the room with you.";
+      } else {
+        titleEl.textContent = "YOU DIED";
+        subEl.textContent = "N-tity caught up to you.";
+      }
+    }
+
+    const showDeathScreen = () => {
+      if (!deathEl) return;
+      deathEl.style.display = "flex";
+      requestAnimationFrame(() => deathEl.classList.add("show"));
+      deathEl.addEventListener("click", () => window.location.reload(), { once: true });
+    };
+
+    if (fadeEl) {
+      fadeEl.classList.add("show");
+      setTimeout(showDeathScreen, 1100); // matches #fadeOverlay's transition duration
+    } else {
+      showDeathScreen();
     }
   }
 
