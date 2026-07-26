@@ -100,10 +100,54 @@ class RoomStreamer {
     return { colliders: this.colliders, spawnPoint: this.spawnPoint };
   }
 
+  /**
+   * Instead of a full symmetric (2r+1)^2 grid, use a small fixed core
+   * (the player's tile + its 4 orthogonal neighbors, so nothing pops in
+   * right next to you) plus 2 "lookahead" tiles extended further in
+   * whatever direction the player is currently walking/facing — so you
+   * can always see the next room ahead without paying for a full 3x3
+   * (or larger) block most of which sits behind you. The lookahead
+   * offsets are recomputed on a cooldown in update() (see
+   * _updateLookaheadDir) rather than every frame, so glancing around
+   * with the mouse doesn't thrash tile rebuilds — only sustained
+   * movement in a new direction shifts the window.
+   */
+  _coreOffsets() {
+    return [
+      { sdx: 0, sdz: 0 },
+      { sdx: 1, sdz: 0 },
+      { sdx: -1, sdz: 0 },
+      { sdx: 0, sdz: 1 },
+      { sdx: 0, sdz: -1 },
+    ];
+  }
+
+  _computeOffsetsForDir(dirTx, dirTz) {
+    const offsets = this._coreOffsets();
+    const key = (o) => o.sdx + "," + o.sdz;
+    const seen = new Set(offsets.map(key));
+    const reach = GAME_CONFIG.floor1.lookaheadTiles || 2;
+    // Extend further out in the current facing/movement direction so
+    // the "next room(s)" are always already streamed in.
+    for (let step = 2; step <= reach + 1; step++) {
+      const o = { sdx: dirTx * (step - 1), sdz: dirTz * (step - 1) };
+      const k = key(o);
+      if (!seen.has(k)) {
+        offsets.push(o);
+        seen.add(k);
+      }
+    }
+    return offsets;
+  }
+
   _allocateSlots() {
-    const radius = GAME_CONFIG.floor1.streamRadius;
-    for (let sdx = -radius; sdx <= radius; sdx++) {
-      for (let sdz = -radius; sdz <= radius; sdz++) {
+    this._lookaheadDirTx = 0;
+    this._lookaheadDirTz = -1; // default: player starts facing -Z
+    this._lastDirCheckPos = null;
+    this._dirCooldown = 0;
+
+    const offsets = this._computeOffsetsForDir(this._lookaheadDirTx, this._lookaheadDirTz);
+    for (const { sdx, sdz } of offsets) {
         const shell = RoomTiles.buildReusableShell();
         shell.group.name = `Shell_${sdx}_${sdz}`;
         this.scene.add(shell.group);
@@ -124,7 +168,6 @@ class RoomStreamer {
           roomType: null,
           sdx, sdz,
         });
-      }
     }
   }
 
@@ -134,6 +177,81 @@ class RoomStreamer {
       this._centerTx = tx;
       this._centerTz = tz;
       this._recenter();
+    }
+    this._updateLookaheadDir(playerPos);
+  }
+
+  /**
+   * Re-evaluates which direction to extend the lookahead tiles in,
+   * based on actual movement (distance travelled since the last check),
+   * not raw camera look direction — checked at most twice a second and
+   * only acted on once the player has moved a meaningful distance, so
+   * turning the mouse to glance sideways never triggers a rebuild; only
+   * genuinely walking a new way does.
+   */
+  _updateLookaheadDir(playerPos) {
+    this._dirCooldown -= 1;
+    if (this._dirCooldown > 0) return;
+    this._dirCooldown = 20; // ~ every 20 update() calls (roughly a third-to-half second at 60fps)
+
+    if (!this._lastDirCheckPos) {
+      this._lastDirCheckPos = playerPos.clone();
+      return;
+    }
+    const dx = playerPos.x - this._lastDirCheckPos.x;
+    const dz = playerPos.z - this._lastDirCheckPos.z;
+    this._lastDirCheckPos = playerPos.clone();
+
+    const moved = Math.hypot(dx, dz);
+    if (moved < 0.6) return; // standing still / barely moved — keep current lookahead
+
+    const newDirTx = Math.abs(dx) >= Math.abs(dz) ? Math.sign(dx) : 0;
+    const newDirTz = Math.abs(dz) > Math.abs(dx) ? Math.sign(dz) : 0;
+    if (newDirTx === 0 && newDirTz === 0) return;
+    if (newDirTx === this._lookaheadDirTx && newDirTz === this._lookaheadDirTz) return;
+
+    this._lookaheadDirTx = newDirTx;
+    this._lookaheadDirTz = newDirTz;
+    this._reassignLookaheadSlots();
+  }
+
+  /**
+   * Re-tasks whichever slots currently sit at "old" lookahead offsets
+   * (i.e. not part of the fixed core) into the new direction's
+   * lookahead offsets, re-furnishing them for their new tile coord —
+   * same reuse-not-rebuild approach _recenter() already uses for the
+   * shell geometry itself.
+   */
+  _reassignLookaheadSlots() {
+    const coreKeys = new Set(this._coreOffsets().map((o) => o.sdx + "," + o.sdz));
+    const newOffsets = this._computeOffsetsForDir(this._lookaheadDirTx, this._lookaheadDirTz)
+      .filter((o) => !coreKeys.has(o.sdx + "," + o.sdz));
+
+    const size = GAME_CONFIG.floor1.tileSize;
+    const freeSlots = this.slots.filter((s) => !coreKeys.has(s.sdx + "," + s.sdz));
+
+    for (let i = 0; i < freeSlots.length && i < newOffsets.length; i++) {
+      const slot = freeSlots[i];
+      const { sdx, sdz } = newOffsets[i];
+      slot.sdx = sdx;
+      slot.sdz = sdz;
+
+      const newTx = this._centerTx + sdx;
+      const newTz = this._centerTz + sdz;
+      slot.group.position.set(newTx * size, 0, newTz * size);
+
+      if (slot.tx !== newTx || slot.tz !== newTz) {
+        this._furnishSlot(slot, newTx, newTz);
+      }
+    }
+    this._rebuildSlotByCoord();
+    this._rebuildColliderList();
+  }
+
+  _rebuildSlotByCoord() {
+    this._slotByCoord.clear();
+    for (const slot of this.slots) {
+      if (slot.tx !== null) this._slotByCoord.set(this.tileKey(slot.tx, slot.tz), slot);
     }
   }
 
