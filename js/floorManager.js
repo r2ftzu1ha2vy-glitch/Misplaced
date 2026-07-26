@@ -134,7 +134,7 @@ async _fadeTransition({ duringBlack, titleText, holdMs }) {
         this.player.position.copy(this.lobby.spawnPoint);
         this.player.position.y = GAME_CONFIG.player.eyeHeight;
         this.player.velocity.set(0, 0, 0);
-        this.player.yaw = Math.PI; // face north, toward the elevators/reception
+        this.player.yaw = 0; // face the elevators (elevatorZ is negative/-Z from spawn)
 
         if (this._floorLabelEl) this._floorLabelEl.textContent = "FLOOR 2 // HOTEL LOBBY";
       },
@@ -253,6 +253,14 @@ async _fadeTransition({ duringBlack, titleText, holdMs }) {
         this.player.position.copy(spawnWorld);
         this.player.position.y = GAME_CONFIG.player.eyeHeight;
         this.player.velocity.set(0, 0, 0);
+        // Remember which way the player was actually facing in the
+        // corridor before we forcibly reorient them into the room's
+        // own frame below — restored on exit so leaving a room doesn't
+        // leave the camera facing the room's "into room" heading
+        // instead of the corridor's real layout (this was the source
+        // of the reported "orientation 90 degrees off" after exiting
+        // rooms: exit never reset yaw at all).
+        this._corridorEntryYaw = this.player.yaw;
         this.player.yaw = 0; // face into the room, away from the door
         this._doorCooldown = 1.0;
         this.ghoxt.onRoomEnter(this.hotelStreamer.roomGroup);
@@ -273,6 +281,10 @@ async _fadeTransition({ duringBlack, titleText, holdMs }) {
         this.player.position.copy(returnWorld);
         this.player.position.y = GAME_CONFIG.player.eyeHeight;
         this.player.velocity.set(0, 0, 0);
+        // Restore the heading they had in the corridor before entering
+        // (see _enterRoomTransition) instead of leaving them facing
+        // whichever way the room's own frame pointed.
+        this.player.yaw = this._corridorEntryYaw != null ? this._corridorEntryYaw : this.player.yaw;
         this._doorCooldown = 1.0;
 
         if (this._floorLabelEl) this._floorLabelEl.textContent = "FLOOR 2 // GUEST WING";
