@@ -180,7 +180,7 @@
       atmosphere.update(dt, player.position);
     }
 
-    if (floorManager) {
+    if (floorManager && !player.flyMode) {
       floorManager.update(dt, player.position);
       colliders = floorManager.getColliders(); // keep the getter's backing array current
     }
