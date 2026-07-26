@@ -41,7 +41,39 @@ class PlayerController {
     this.keys = {};
     this.locked = false;
 
+    // Photo-mode flight, toggled by the cheat sequence in
+    // cheatSystem.js — not gravity/collision-bound, purely for lining
+    // up screenshots. Speed is deliberately separate from
+    // walk/sprint/crouchSpeed so tuning normal movement never
+    // accidentally changes fly speed.
+    this.flyMode = false;
+    this.flySpeed = 6;
+    this.flyFastMultiplier = 2.5; // sprint-held while flying moves faster
+    this._preFlyVelocity = null;
+
     this._bindInputs();
+  }
+
+  /** Toggles photo-mode flight on/off. When turning ON, the player's
+   *  current velocity is stashed and zeroed so they don't rocket off
+   *  in whatever direction they were last walking; when turning OFF,
+   *  gravity/ground-collision picks back up exactly where update()
+   *  left off (isGrounded recomputes naturally next frame). */
+  setFlyMode(enabled) {
+    if (enabled === this.flyMode) return;
+    this.flyMode = enabled;
+    if (enabled) {
+      this._preFlyVelocity = this.velocity.clone();
+      this.velocity.set(0, 0, 0);
+      this.verticalVelocity = 0;
+    } else {
+      // Don't restore old horizontal velocity — landing back on the
+      // ground carrying photo-mode momentum would feel like a bug, not
+      // a feature.
+      this.velocity.set(0, 0, 0);
+      this.verticalVelocity = 0;
+      this._preFlyVelocity = null;
+    }
   }
 
   _bindInputs() {
@@ -220,6 +252,11 @@ class PlayerController {
   }
 
   update(dt) {
+    if (this.flyMode) {
+      this._updateFly(dt);
+      return;
+    }
+
     const cfg = this.cfg;
 
     // --- crouch state ---
@@ -333,5 +370,63 @@ class PlayerController {
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch + (Math.random() - 0.5) * this.landingShake * 0.3;
     this.camera.rotation.z = 0;
+  }
+
+  /** Free-flight movement for photo mode: no gravity, no collision, no
+   *  head bob — full 3D movement in the direction the camera is
+   *  actually looking (including pitch), so flying "forward" while
+   *  looking down actually descends instead of sliding along a flat
+   *  plane. Reuses the exact same key bindings as normal movement
+   *  (W/A/S/D to move, Space to rise, crouch-key to descend, Shift to
+   *  go faster) so it works identically on the mobile touch buttons
+   *  with no separate UI needed. */
+  _updateFly(dt) {
+    const cfg = this.cfg;
+
+    let ix = 0, iz = 0;
+    if (this.keys["KeyW"]) iz -= 1;
+    if (this.keys["KeyS"]) iz += 1;
+    if (this.keys["KeyA"]) ix -= 1;
+    if (this.keys["KeyD"]) ix += 1;
+    let iy = 0;
+    if (this.keys["Space"]) iy += 1;
+    if (this.keys["ControlLeft"] || this.keys["KeyC"]) iy -= 1;
+
+    // Forward/right vectors follow full look direction (pitch included)
+    // so looking up/down and flying "forward" moves along that same
+    // tilt instead of only ever moving on a flat horizontal plane.
+    const cosPitch = Math.cos(this.pitch);
+    const forward = new THREE.Vector3(
+      -Math.sin(this.yaw) * cosPitch,
+      Math.sin(this.pitch),
+      -Math.cos(this.yaw) * cosPitch
+    );
+    const right = new THREE.Vector3(Math.sin(this.yaw + Math.PI / 2), 0, Math.cos(this.yaw + Math.PI / 2));
+
+    const move = new THREE.Vector3()
+      .addScaledVector(forward, -iz)
+      .addScaledVector(right, ix)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), iy);
+
+    if (move.lengthSq() > 0) move.normalize();
+
+    const speed = this.flySpeed * (this.keys["ShiftLeft"] ? this.flyFastMultiplier : 1);
+    this.position.addScaledVector(move, speed * dt);
+
+    this.camera.position.copy(this.position);
+    this.camera.rotation.order = "YXZ";
+    this.camera.rotation.y = this.yaw;
+    this.camera.rotation.x = this.pitch;
+    this.camera.rotation.z = 0;
+
+    // FOV/stamina/bob are all walking-specific state that shouldn't
+    // drift while flying; snap FOV back to base in case fly mode was
+    // toggled mid-sprint so the lens doesn't stay "zoomed" the whole
+    // time the player is taking photos.
+    if (this.camera.fov !== cfg.fovBase) {
+      this.camera.fov = cfg.fovBase;
+      this.currentFov = cfg.fovBase;
+      this.camera.updateProjectionMatrix();
+    }
   }
 }
