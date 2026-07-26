@@ -247,7 +247,18 @@ class PlayerController {
     const raycaster = new THREE.Raycaster();
     raycaster.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0));
     const hits = raycaster.intersectObjects(colliders, true);
-    if (hits.length > 0) return hits[0].point.y;
+    // Walking into a door/elevator-door collider used to lift the player
+    // onto TOP of it — the downward ray hit the top of that tall mesh
+    // before it ever reached the actual floor beneath, since both are in
+    // the same flat colliders list with no floor/prop distinction. Real
+    // floor is always at/near the player's current feet level; anything
+    // hit noticeably above that (a doorway, elevator door, tall prop)
+    // isn't ground, so skip past it to the next hit down instead.
+    const currentFeetY = this.position.y - this.currentHeight;
+    for (const hit of hits) {
+      if (hit.point.y <= currentFeetY + 0.6) return hit.point.y;
+    }
+    if (hits.length > 0) return hits[0].point.y; // fallback: nothing plausible found, use nearest hit anyway
     return 0; // fallback ground plane
   }
 
