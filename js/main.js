@@ -50,18 +50,20 @@
 
   /**
    * Applies deviceTier to the handful of settings that actually move the
-   * needle on frame cost: Floor 1's stream radius (its 20m tiles carry
-   * several furniture props each — the single biggest lever for the
-   * office feeling laggy). Called immediately, before the renderer even
-   * exists, since scene/fog/camera setup below already reads
-   * GAME_CONFIG.floor1.streamRadius. Floor 2's smaller/simpler corridor
-   * segments are left alone since they weren't the reported problem area.
+   * needle on frame cost: Floor 1's lookahead extension length. The
+   * fixed core (player tile + 4 neighbors) always stays put — only how
+   * far the lookahead reaches in the current walking direction scales
+   * down per tier. Called immediately, before the renderer even exists,
+   * since scene/fog/camera setup below already reads
+   * GAME_CONFIG.floor1.lookaheadTiles. Floor 2's smaller/simpler
+   * corridor segments are left alone since they weren't the reported
+   * problem area.
    */
   function applyDeviceTierConfig(tier) {
     if (tier === "low") {
-      GAME_CONFIG.floor1.streamRadius = 0; // 1x1 tile around the player instead of 3x3
+      GAME_CONFIG.floor1.lookaheadTiles = 1; // just 1 tile ahead, no extra reach
     } else {
-      GAME_CONFIG.floor1.streamRadius = 1; // mid/high: unchanged default
+      GAME_CONFIG.floor1.lookaheadTiles = 2; // mid/high: unchanged default
     }
   }
 
@@ -72,7 +74,7 @@
     scene = new THREE.Scene();
     // Fog far is intentionally close to the stream radius edge so newly
     // streamed-in tiles fade in through fog rather than visibly popping.
-    const streamEdge = GAME_CONFIG.floor1.tileSize * (GAME_CONFIG.floor1.streamRadius + 0.5);
+    const streamEdge = GAME_CONFIG.floor1.tileSize * (2.5); // core+lookahead reaches ~2 tiles out at most
     scene.fog = new THREE.Fog(
       GAME_CONFIG.atmosphere.fogColor,
       GAME_CONFIG.atmosphere.fogNear,
