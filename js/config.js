@@ -31,7 +31,7 @@ const GAME_CONFIG = {
     plasticBin:         "plastic_round_bin.glb",
     psxComputer:        "psx_retro_computer.glb",
     retroComputer:      "retro_computer.glb",
-    scp096:             "scp-096_-_true_hd_sound_mod.glb", // model only for now, audio skipped
+    scp096:             "scp-096_-_true_hd_sound_mod.glb", // also the N-tity monster model (see monsterSystem.js)
     whiteboard:         "whiteboard.glb",
     exitDoor:           "access_card.glb",
   },
@@ -93,6 +93,49 @@ const GAME_CONFIG = {
     rareEventIntervalMax: 70,
   },
 
+  // Shared sound-effect library. Keyed here so monsterSystem.js (and
+  // anything else) never hardcodes a filename inline.
+  audio: {
+    basePath: "assets/audio/",
+    ntityRoar: "freesound_community-monster-roar-02-102957.mp3",
+    ntityFootsteps: "u_3x9ga8wevj-walking-sound-effect-272246.mp3",
+    teleportWoosh: "ribhavagrawal-woosh-230554.mp3",
+    bodyFall: "universfield-body-fall-259680.mp3",
+    ghoxtScreech1: "53439420-flying-monster-screech-01-461221.mp3",
+    ghoxtScreech2: "53439420-flying-monster-screech-02-461220.mp3",
+  },
+
+  // Monster AI tuning. See js/monsterSystem.js for behavior.
+  monsters: {
+    // N-tity ("Entity") — Floor 1. Lives in the 6-cabinet server room.
+    // Stepping into that room teleports it in and it hunts at full
+    // speed; if the player makes it out of the room it keeps chasing
+    // but 25% slower everywhere else, until it either catches them or
+    // loses them.
+    ntity: {
+      modelKey: "scp096",
+      homeRoomType: "serverRoom", // the room type with 6 file cabinets
+      fastSpeed: 3.6,             // m/s, inside its home room
+      slowSpeedMultiplier: 0.75,  // 25% slower everywhere else
+      catchRadius: 0.9,
+      giveUpDistance: 34,         // outside its room, past this range it gives up and vanishes
+      teleportLeadDistance: 2.4,  // how far from the player it appears when it teleports in
+      roarCooldown: 6,
+    },
+    // Ghoxt — Floor 2's ghost. Only ever lurks inside hotel room
+    // interiors (never the corridor). Each room has a chance to have
+    // it waiting in a back corner; after a short delay it reveals
+    // itself with a screech and drifts toward the player.
+    ghoxt: {
+      modelKey: "ghost",
+      lurkChance: 0.4,
+      moveSpeed: 1.15,
+      catchRadius: 0.8,
+      revealDelayMin: 1.5,
+      revealDelayMax: 4.0,
+    },
+  },
+
   // Floor 1 — infinite tiled office. The floor is built from square
   // "rooms" (tiles) on a grid, each with doorways on all 4 sides so
   // any room type can connect to any neighbor. Rooms are streamed in
@@ -136,6 +179,7 @@ const GAME_CONFIG = {
     paintingBek2:   "painting_beksinski_2.glb",
     paintingBek3:   "painting_beksinski_3.glb",
     accessCard:     "access_card.glb",
+    ghost:          "ghost_daughter.glb", // Ghoxt — Floor 2's monster, only ever lurks inside hotel rooms
   },
   // Same idea as modelScaleFixes above but for the floor2 model set —
   // several of these Sketchfab exports also bake in oversized real-world
