@@ -101,8 +101,9 @@ const HotelRooms = (() => {
 
     if (assets) {
       const door = assets.get("woodenDoor");
-      const footprint = door.userData.footprint || { width: 1, height: H, depth: 0.1 };
-      const scale = H / Math.max(footprint.height, 0.01);
+      const targetDoorHeight = GAME_CONFIG.hotelCorridor.doorHeight; // real doorway height, not room height H
+      const footprint = door.userData.footprint || { width: 1, height: targetDoorHeight, depth: 0.1 };
+      const scale = targetDoorHeight / Math.max(footprint.height, 0.01);
       door.scale.setScalar(scale);
       door.position.set(0, 0, SIZE_Z / 2 - 0.02);
       door.rotation.y = Math.PI; // face into the room, matching the corridor-side door orientation
