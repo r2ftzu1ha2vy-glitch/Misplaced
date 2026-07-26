@@ -137,6 +137,16 @@ class RoomStreamer {
     }
   }
 
+  /** Public lookup for "what room type is the player standing in right
+   *  now" — used by monsterSystem.js (N-tity needs to know if the
+   *  player is inside its 6-cabinet home room). Returns null if the
+   *  tile isn't currently a live streamed slot. */
+  getRoomTypeAt(x, z) {
+    const { tx, tz } = this.worldToTile(x, z);
+    const slot = this._slotByCoord.get(this.tileKey(tx, tz));
+    return slot ? slot.roomType : null;
+  }
+
   checkExitTrigger(playerPos) {
     for (const gate of this.exitGateCoords) {
       const key = this.tileKey(gate.tx, gate.tz);
