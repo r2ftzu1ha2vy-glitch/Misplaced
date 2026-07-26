@@ -18,7 +18,57 @@
   let hasWon = false;
   let hasEnded = false; // true once the win OR death screen has fired, guards against double-trigger
 
+  let deviceTier = "high"; // "low" | "mid" | "high" — set once in init(), read by several systems below
+
+  /**
+   * Cheap, synchronous heuristic to bucket the current device into a
+   * performance tier, so we can automatically dial down render cost on
+   * phones/tablets/low-core laptops instead of shipping one fixed
+   * quality level for every device. No GPU benchmarking (that needs
+   * async frame timing we don't have time for at boot) — just signals
+   * available immediately: touch/mobile UA, core count, and memory.
+   */
+  function detectDeviceTier() {
+    const ua = navigator.userAgent || "";
+    const isMobileUA = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(ua);
+    const cores = navigator.hardwareConcurrency || 4;
+    const mem = navigator.deviceMemory || 4; // Chrome-only; undefined elsewhere, defaults to 4 (mid)
+    const coarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+
+    if (isMobileUA || coarsePointer) {
+      // Phones/tablets: split low vs mid by cores+memory, since a modern
+      // flagship phone can handle more than a 2015-era budget device.
+      if (cores <= 4 || mem <= 3) return "low";
+      return "mid";
+    }
+    // Desktop/laptop: low core count is the main red flag (old/budget
+    // hardware, or a throttled VM); otherwise assume it can handle full quality.
+    if (cores <= 2) return "low";
+    if (cores <= 4) return "mid";
+    return "high";
+  }
+
+  /**
+   * Applies deviceTier to the handful of settings that actually move the
+   * needle on frame cost: Floor 1's stream radius (its 20m tiles carry
+   * several furniture props each — the single biggest lever for the
+   * office feeling laggy). Called immediately, before the renderer even
+   * exists, since scene/fog/camera setup below already reads
+   * GAME_CONFIG.floor1.streamRadius. Floor 2's smaller/simpler corridor
+   * segments are left alone since they weren't the reported problem area.
+   */
+  function applyDeviceTierConfig(tier) {
+    if (tier === "low") {
+      GAME_CONFIG.floor1.streamRadius = 0; // 1x1 tile around the player instead of 3x3
+    } else {
+      GAME_CONFIG.floor1.streamRadius = 1; // mid/high: unchanged default
+    }
+  }
+
   function init() {
+    deviceTier = detectDeviceTier();
+    applyDeviceTierConfig(deviceTier);
+
     scene = new THREE.Scene();
     // Fog far is intentionally close to the stream radius edge so newly
     // streamed-in tiles fade in through fog rather than visibly popping.
@@ -43,12 +93,22 @@
     audioListener = new THREE.AudioListener();
     camera.add(audioListener);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer = new THREE.WebGLRenderer({
+      // Antialiasing is one of the more expensive fixed costs per frame
+      // (extra samples every pixel, every frame) — worth cutting first
+      // on weaker devices since MSAA-off is barely noticeable in a dark,
+      // foggy scene like this one but frees up real GPU headroom.
+      antialias: deviceTier === "high",
+      powerPreference: "high-performance",
+    });
     // Capped at 1.5 instead of 2 — on high-DPI/retina screens a cap of 2
     // was quietly forcing the GPU to shade up to 4x the actual screen
     // pixels every frame, which is one of the more common causes of
     // "laggy" performance that isn't visible in any profiler timeline.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // Lower tiers get an even tighter cap since resolution scales the
+    // cost of literally every fragment shader in the scene.
+    const pixelRatioCap = deviceTier === "low" ? 1 : deviceTier === "mid" ? 1.25 : 1.5;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, pixelRatioCap));
     renderer.setSize(window.innerWidth, window.innerHeight);
     // No light in the level ever casts a shadow (see lightingSystem /
     // roomTiles), so leaving the shadow map on just made the renderer do
