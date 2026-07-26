@@ -89,6 +89,14 @@ class RoomStreamer {
     this._centerTx = 0;
     this._centerTz = 0;
     this._furnishAllSlots();
+    // See hotelStreamer.js's enterRoom() for the full explanation: any
+    // freshly-added mesh only gets a correct matrixWorld once the
+    // renderer's next render() pass runs, but main.js immediately
+    // raycasts against these colliders (via
+    // PlayerController._groundHeightAt) on the very first frame to
+    // settle the player onto the floor. Forcing the update here closes
+    // that gap.
+    for (const slot of this.slots) slot.group.updateMatrixWorld(true);
     return { colliders: this.colliders, spawnPoint: this.spawnPoint };
   }
 
