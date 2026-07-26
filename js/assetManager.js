@@ -33,7 +33,7 @@ class AssetManager {
         this.loader.load(
           url,
           (gltf) => {
-            this._prepModel(gltf.scene, key);
+            this._prepModel(gltf.scene, key, GAME_CONFIG.modelScaleFixes);
             this.cache[key] = gltf.scene;
             done++;
             onProgress && onProgress(done, total, key);
@@ -64,7 +64,58 @@ class AssetManager {
     await Promise.all(workers);
   }
 
-  _prepModel(root, key) {
+  /**
+   * Loads a second, independent model set (Floor 2's hotel assets) on
+   * demand rather than upfront — these only need to exist once the
+   * player actually reaches Floor 1's exit gate, so bundling them into
+   * the initial loadAll() would just make the Floor 1 title-screen
+   * loading bar slower for no benefit. Keys land in the SAME this.cache
+   * as Floor 1's models (the two model sets use non-overlapping keys),
+   * so get() works identically afterward regardless of which floor a
+   * key came from.
+   */
+  async loadFloor2(onProgress) {
+    const entries = Object.entries(GAME_CONFIG.modelsFloor2);
+    const total = entries.length;
+    let done = 0;
+
+    const loadOne = ([key, filename]) => {
+      const url = GAME_CONFIG.assetBasePathFloor2 + filename;
+      return new Promise((resolve) => {
+        this.loader.load(
+          url,
+          (gltf) => {
+            this._prepModel(gltf.scene, key, GAME_CONFIG.modelScaleFixesFloor2);
+            this.cache[key] = gltf.scene;
+            done++;
+            onProgress && onProgress(done, total, key);
+            resolve();
+          },
+          undefined,
+          (err) => {
+            this.failed.add(key);
+            Utils.logError(`Failed to load "${filename}" (key: ${key}). Using placeholder. ${err && err.message ? err.message : ""}`);
+            this.cache[key] = this._makePlaceholder(key);
+            done++;
+            onProgress && onProgress(done, total, key);
+            resolve();
+          }
+        );
+      });
+    };
+
+    const CONCURRENCY = 4;
+    let idx = 0;
+    const workers = new Array(Math.min(CONCURRENCY, entries.length)).fill(0).map(async () => {
+      while (idx < entries.length) {
+        const i = idx++;
+        await loadOne(entries[i]);
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  _prepModel(root, key, scaleFixTable) {
     root.traverse((node) => {
       if (node.isMesh) {
         // No light in the scene ever casts a shadow (see roomTiles.js —
@@ -89,7 +140,8 @@ class AssetManager {
     // that measures ~1500 units wide). Correct that first so every
     // downstream measurement (bounding box, footprint) reflects the
     // model's actual real-world size.
-    const scaleFix = GAME_CONFIG.modelScaleFixes && GAME_CONFIG.modelScaleFixes[key];
+    const fixTable = scaleFixTable || GAME_CONFIG.modelScaleFixes;
+    const scaleFix = fixTable && fixTable[key];
     if (scaleFix && scaleFix !== 1) {
       root.scale.multiplyScalar(scaleFix);
     }
