@@ -275,10 +275,21 @@ class HotelStreamer {
     }
     this.corridorRoot.visible = true;
     this.inRoom = false;
-    this._rebuildColliderList();
 
     const returnPos = this.roomExitInfo ? this.roomExitInfo.corridorReturnWorldPos.clone() : new THREE.Vector3(0, 0, 0);
     this.roomExitInfo = null;
+
+    // Force-recenter the corridor around the return position BEFORE
+    // handing it back to the caller. Segments only exist within
+    // streamRadius of _centerSeg, and update() skips recentering while
+    // inRoom was true, so without this the return Z can land outside
+    // every currently-streamed segment's collider range — putting the
+    // player on empty space past the shell (falling/teleporting out of
+    // the map) instead of on corridor floor.
+    this._centerSeg = this.worldToSeg(returnPos.z);
+    this._recenter();
+    for (const slot of this.slots) slot.group.updateMatrixWorld(true);
+
     return returnPos;
   }
 }
