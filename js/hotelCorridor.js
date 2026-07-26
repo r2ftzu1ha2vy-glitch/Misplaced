@@ -133,7 +133,15 @@ const HotelCorridor = (() => {
       door.position.set(x, 0, 0);
       door.rotation.y = side === -1 ? -Math.PI / 2 : Math.PI / 2;
       group.add(door);
-      slot.colliders.push(door);
+      // Deliberately NOT pushed into slot.colliders: this door sits
+      // exactly in the doorway opening the player is meant to walk
+      // through to reach the room-enter trigger just past it. Making it
+      // solid blocked the player at the door plane — and since the
+      // door mesh has real height, the ground-height raycast used to
+      // settle the player's Y position could then find the TOP of the
+      // door instead of the corridor floor, which is what caused the
+      // player to appear to stand on top of the door instead of
+      // walking into the room.
 
       // Small glowing number plate above the door
       const plate = box(0.28, 0.16, 0.02, mats().doorNumberPlate);
