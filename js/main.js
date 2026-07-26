@@ -134,6 +134,8 @@
     floorManager.initFloor1(roomStreamer);
     floorManager.onWin(onWin);
 
+    CheatSystem.init(player, floorManager);
+
     return assets;
   }
 
@@ -182,6 +184,8 @@
       floorManager.update(dt, player.position);
       colliders = floorManager.getColliders(); // keep the getter's backing array current
     }
+
+    CheatSystem.update(dt);
 
     renderer.render(scene, camera);
     if (running) requestAnimationFrame(animate);
