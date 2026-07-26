@@ -14,7 +14,7 @@
  */
 
 class FloorManager {
-  constructor({ scene, assets, lighting, atmosphere, player, camera }) {
+  constructor({ scene, assets, lighting, atmosphere, player, camera, audioListener }) {
     this.scene = scene;
     this.assets = assets;
     this.lighting = lighting;
@@ -29,6 +29,11 @@ class FloorManager {
     this.lobby = null;          // { group, colliders, spawnPoint, elevators }
     this.hotelStreamer = null;  // Floor 2 corridor + rooms
 
+    // Enemies — N-tity (Floor 1) and Ghoxt (Floor 2). See monsterSystem.js.
+    this.ntity = new NtityAI(scene, assets, audioListener);
+    this.ghoxt = new GhoxtAI(assets, audioListener);
+    this._onDeathCallback = null;
+
     this._fading = false;
     this._doorCooldown = 0; // brief lockout after a room transition so the same trigger can't immediately re-fire
 
@@ -36,6 +41,18 @@ class FloorManager {
     this._floorLabelEl = document.getElementById("fpsLabel");
     this._interactPromptEl = document.getElementById("interactPrompt");
     this._transitionCardEl = document.getElementById("transitionCard");
+  }
+
+  /** main.js registers its death sequence here — fired the instant
+   *  either enemy reaches the player. `who` is "ntity" or "ghoxt" so
+   *  the death screen can show flavor text specific to what got you. */
+  onDeath(cb) {
+    this._onDeathCallback = cb;
+  }
+
+  _handleCatch(who) {
+    if (this._fading) return; // already mid-transition/already handled
+    if (this._onDeathCallback) this._onDeathCallback(who);
   }
 
   /** Called once from main.js right after Floor 1's RoomStreamer has
@@ -96,6 +113,7 @@ class FloorManager {
           }
           this.roomStreamer = null;
         }
+        this.ntity.reset(); // Floor 1 is gone — clear any active hunt/mesh/audio
 
         this.lobbyGroup = new THREE.Group();
         this.lobbyGroup.name = "HotelLobby";
@@ -233,6 +251,7 @@ class FloorManager {
         this.player.velocity.set(0, 0, 0);
         this.player.yaw = 0; // face into the room, away from the door
         this._doorCooldown = 1.0;
+        this.ghoxt.onRoomEnter(this.hotelStreamer.roomGroup);
 
         if (this._floorLabelEl) this._floorLabelEl.textContent = `FLOOR 2 // ROOM ${trig.roomNumber}`;
       },
@@ -244,6 +263,7 @@ class FloorManager {
     await this._fadeTransition({
       holdMs: 300,
       duringBlack: () => {
+        this.ghoxt.onRoomExit();
         const returnWorld = this.hotelStreamer.exitRoom();
         this.colliders = this.hotelStreamer.colliders;
         this.player.position.copy(returnWorld);
@@ -278,6 +298,10 @@ class FloorManager {
           this.colliders = this.roomStreamer.colliders;
           if (this.roomStreamer.checkExitTrigger(playerPos)) {
             this.goToLobby();
+            break;
+          }
+          if (!this._fading) {
+            this.ntity.update(dt, playerPos, this.roomStreamer, (who) => this._handleCatch(who));
           }
         }
         break;
@@ -286,6 +310,14 @@ class FloorManager {
         break;
       case "corridor":
         this.updateCorridor(dt, playerPos);
+        if (!this._fading && this.hotelStreamer && this.hotelStreamer.inRoom && this.hotelStreamer.roomGroup) {
+          // Ghoxt operates in the room's own local space — the room
+          // group sits at a fixed world offset (see hotelStreamer's
+          // enterRoom), so convert the player's world position into
+          // that local space before handing it to the AI.
+          const localPos = playerPos.clone().sub(this.hotelStreamer.roomGroup.position);
+          this.ghoxt.update(dt, localPos, (who) => this._handleCatch(who));
+        }
         break;
       default:
         break;
