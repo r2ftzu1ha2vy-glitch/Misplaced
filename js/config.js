@@ -153,7 +153,12 @@ const GAME_CONFIG = {
     // being fully built, lit, and rendered for nothing. Radius 1 (9 tiles)
     // still leaves a comfortable buffer past the fog line for seamless
     // streaming, at roughly a third of the geometry/light cost.
-    streamRadius: 1,
+    // Floor 1 now streams a fixed core (player tile + 4 neighbors) plus
+    // a direction-biased lookahead that extends this many tiles further
+    // out in whatever way the player is currently walking — see
+    // roomStreamer.js's _computeOffsetsForDir. Overridden per device
+    // tier in main.js's applyDeviceTierConfig.
+    lookaheadTiles: 2,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
     minTilesFromSpawnForExit: 20, // min tiles out an exit gate can be placed
     maxTilesFromSpawnForExit: 50, // max tiles out an exit gate can be placed
