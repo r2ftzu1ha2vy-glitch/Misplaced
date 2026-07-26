@@ -56,9 +56,11 @@ const HotelRooms = (() => {
    * a doorway gap in the +Z wall (the wall closest to the corridor,
    * where the player entered from — matches whichever side the corridor
    * door was on, but since the room is its own isolated local space,
-   * "the door" is always +Z here for simplicity).
+   * "the door" is always +Z here for simplicity). A woodenDoor model is
+   * placed right in that gap so it visibly reads as a door to walk back
+   * out through, instead of just an open hole in the wall.
    */
-  function _buildShell(group, floorMat, wallMat, ceilingMat) {
+  function _buildShell(group, floorMat, wallMat, ceilingMat, assets) {
     const colliders = [];
 
     const floor = box(SIZE_X, 0.2, SIZE_Z, floorMat);
@@ -97,6 +99,23 @@ const HotelRooms = (() => {
     group.add(frontB);
     colliders.push(frontB);
 
+    if (assets) {
+      const door = assets.get("woodenDoor");
+      const footprint = door.userData.footprint || { width: 1, height: H, depth: 0.1 };
+      const scale = H / Math.max(footprint.height, 0.01);
+      door.scale.setScalar(scale);
+      door.position.set(0, 0, SIZE_Z / 2 - 0.02);
+      door.rotation.y = Math.PI; // face into the room, matching the corridor-side door orientation
+      group.add(door);
+      // Deliberately NOT pushed into colliders — same reasoning as the
+      // corridor's doors (see hotelCorridor.js's furnishSegment): this
+      // sits exactly in the doorway the player walks through to trigger
+      // checkRoomExitTrigger just past it. Making it solid would block
+      // that exit, and its real height would let the ground-height
+      // raycast catch its top instead of the room floor, putting the
+      // player on top of the door instead of through it.
+    }
+
     const lintel = box(DOOR_W, H * 0.2, WT, wallMat);
     lintel.position.set(0, H - H * 0.1, SIZE_Z / 2);
     group.add(lintel);
@@ -121,7 +140,7 @@ const HotelRooms = (() => {
   const _spawnPoint = () => new THREE.Vector3(0, 0, SIZE_Z / 2 - 1.2);
 
   function buildGothicSuite(group, assets, lighting, rng) {
-    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling);
+    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling, assets);
     const lights = [];
 
     const bed = assets.get("gothicBed");
@@ -146,7 +165,7 @@ const HotelRooms = (() => {
   }
 
   function buildLoungeRoom(group, assets, lighting, rng) {
-    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling);
+    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling, assets);
     const lights = [];
 
     const sofa = assets.get("sofa");
@@ -171,7 +190,7 @@ const HotelRooms = (() => {
   }
 
   function buildGalleryRoom(group, assets, lighting, rng) {
-    const colliders = _buildShell(group, mats().floorGallery, mats().wallGallery, mats().ceiling);
+    const colliders = _buildShell(group, mats().floorGallery, mats().wallGallery, mats().ceiling, assets);
     const lights = [];
 
     const p2 = assets.get("paintingBek2");
@@ -189,7 +208,7 @@ const HotelRooms = (() => {
   }
 
   function buildCurtainRoom(group, assets, lighting, rng) {
-    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling);
+    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling, assets);
     const lights = [];
 
     const curtain = assets.get("curtain");
@@ -209,7 +228,7 @@ const HotelRooms = (() => {
   }
 
   function buildEmptyRoom(group, assets, lighting, rng) {
-    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling);
+    const colliders = _buildShell(group, mats().floor, mats().wall, mats().ceiling, assets);
     const lights = [];
     // deliberately sparse — a single dim, unstable light
     _addLight(group, lighting, lights, 0, -1, 3.5);
