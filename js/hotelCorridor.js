@@ -1,191 +1,288 @@
 /**
- * hotelCorridor.js
+ * hotelStreamer.js
  * ---------------------------------------------------------------
- * Floor 2, level 2 — the endless hotel corridor. Same "fixed shell
- * slots re-centered on the player" streaming strategy as Floor 1's
- * RoomStreamer (see roomStreamer.js for the full rationale), but
- * simplified to a 1D corridor: segments extend only along Z, each
- * with a door on the left (-X) and right (+X) wall. Walking through
- * either door hands off to hotelRooms.js to build/enter one of 5
- * hotel room interiors as a separate sub-scene.
+ * Drives the endless hotel corridor (Floor 2, level 2): streams
+ * corridor segments in/out around the player exactly like Floor 1's
+ * RoomStreamer but along a single Z axis, and owns the "enter a room
+ * through a door" state machine — when the player crosses a door
+ * trigger, the corridor is hidden, a HotelRooms interior is built into
+ * a separate group, and the player is teleported into it. Walking back
+ * through that room's door reverses the swap.
  *
- * The access card (the Floor 2 "win" object) spawns on the floor at
- * a deterministic segment somewhere out along the corridor; walking
- * over it wins the floor, mirroring Floor 1's exit-gate trigger.
+ * The access card win trigger lives on the corridor floor itself (see
+ * hotelCorridor.js) and is checked the same way Floor 1 checks its
+ * exit gate: a simple world-space distance test each frame.
  * ---------------------------------------------------------------
  */
 
-const HotelCorridor = (() => {
-  const T = () => GAME_CONFIG.hotelCorridor.tileSize;
-  const W = () => GAME_CONFIG.hotelCorridor.corridorWidth;
-  const H = () => GAME_CONFIG.hotelCorridor.wallHeight;
-  const DOOR_W = () => GAME_CONFIG.hotelCorridor.doorWidth;
-  const DOOR_H = () => GAME_CONFIG.hotelCorridor.doorHeight;
-  const WT = () => GAME_CONFIG.hotelCorridor.wallThickness;
+class HotelStreamer {
+  constructor(scene, assets, lighting, onWin) {
+    this.scene = scene;
+    this.assets = assets;
+    this.lighting = lighting;
+    this.onWin = onWin;
 
-  let _mats = null;
-  function mats() {
-    if (_mats) return _mats;
-    _mats = {
-      floor: new THREE.MeshStandardMaterial({ color: 0x3a2a28, roughness: 0.85, metalness: 0.0 }),
-      floorRug: new THREE.MeshStandardMaterial({ color: 0x5a1f22, roughness: 0.9, metalness: 0.0 }),
-      wall: new THREE.MeshStandardMaterial({ color: 0x584c42, roughness: 0.85, metalness: 0.0 }),
-      wallDoorFrame: new THREE.MeshStandardMaterial({ color: 0x2c2420, roughness: 0.6, metalness: 0.1 }),
-      ceiling: new THREE.MeshStandardMaterial({ color: 0x241e1a, roughness: 1.0 }),
-      doorNumberPlate: new THREE.MeshStandardMaterial({ color: 0xb89a5a, roughness: 0.35, metalness: 0.8, emissive: 0x2a2000, emissiveIntensity: 0.3 }),
-      cardGlow: new THREE.MeshStandardMaterial({ color: 0x2a3a55, roughness: 0.5, emissive: 0x1a3a5a, emissiveIntensity: 0.55 }),
-    };
-    return _mats;
+    this.corridorRoot = new THREE.Group();
+    this.corridorRoot.name = "HotelCorridorRoot";
+    this.scene.add(this.corridorRoot);
+
+    this.slots = [];
+    this._centerSeg = null;
+
+    // Room-interior sub-scene state
+    this.inRoom = false;
+    this.roomGroup = null;
+    this.roomExitInfo = null; // { corridorReturnPos, corridorReturnYaw }
+    this._pendingRoomFade = null; // callback set by floorManager to fade for room transitions
+
+    this.colliders = [];
+    this.spawnPoint = new THREE.Vector3(0, 0, 0);
+
+    this._cardSeg = this._computeCardSegment();
   }
 
-  function box(w, h, d, mat) {
-    return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  _computeCardSegment() {
+    const { minSegmentsFromStartForCard: minD, maxSegmentsFromStartForCard: maxD } = GAME_CONFIG.hotelCorridor;
+    const rng = Utils.makeRng(0xC0FFEE01);
+    const dir = rng() < 0.5 ? -1 : 1;
+    const dist = minD + Math.floor(rng() * (maxD - minD));
+    return dir * dist;
   }
 
-  /**
-   * Builds one reusable corridor segment shell: floor, ceiling, side
-   * walls each with a centered doorway gap (so a wooden_door.glb model
-   * can sit in the opening), front/back left open (corridor continues).
-   * Segments differ from Floor 1's tiles in that only the LEFT and
-   * RIGHT (X) walls have doors — the corridor itself runs along Z with
-   * no walls blocking forward/back travel.
-   */
-  function buildReusableSegment() {
-    const size = T();
-    const w = W();
-    const h = H();
-    const wt = WT();
-    const doorW = DOOR_W();
-    const segLen = (w - doorW) / 2; // unused directly; walls run along Z here
-
-    const group = new THREE.Group();
-    const colliders = [];
-
-    const floor = box(w, 0.2, size, mats().floor);
-    floor.position.set(0, -0.1, 0);
-    group.add(floor);
-    colliders.push(floor);
-
-    const rug = box(w * 0.35, 0.02, size, mats().floorRug);
-    rug.position.set(0, 0.011, 0);
-    group.add(rug);
-
-    const ceiling = box(w, 0.2, size, mats().ceiling);
-    ceiling.position.set(0, h + 0.1, 0);
-    group.add(ceiling);
-
-    // Left (-X) and right (+X) walls, each with a centered doorway gap
-    // along Z (door faces into the corridor at the segment's midpoint).
-    const doorGapZ = Math.min(DOOR_W(), size * 0.8);
-    const segZLen = (size - doorGapZ) / 2;
-
-    for (const sign of [-1, 1]) {
-      const x = sign * (w / 2);
-
-      const segA = box(wt, h, segZLen, mats().wall);
-      segA.position.set(x, h / 2, -(doorGapZ / 2 + segZLen / 2));
-      group.add(segA);
-      colliders.push(segA);
-
-      const segB = box(wt, h, segZLen, mats().wall);
-      segB.position.set(x, h / 2, (doorGapZ / 2 + segZLen / 2));
-      group.add(segB);
-      colliders.push(segB);
-
-      const lintel = box(wt, h - DOOR_H(), doorGapZ, mats().wall);
-      lintel.position.set(x, DOOR_H() + (h - DOOR_H()) / 2, 0);
-      group.add(lintel);
-      colliders.push(lintel);
-
-      // Door frame trim
-      const frameTop = box(wt + 0.06, 0.12, doorGapZ + 0.2, mats().wallDoorFrame);
-      frameTop.position.set(x, DOOR_H() + 0.06, 0);
-      group.add(frameTop);
-    }
-
-    const doorSlotsGroup = new THREE.Group();
-    group.add(doorSlotsGroup);
-
-    return { group, colliders, floorMesh: floor, doorSlotsGroup, doorGapZ };
+  worldToSeg(z) {
+    return Math.round(z / T());
   }
 
-  /**
-   * Furnishes one segment: places a door model + room-number plate in
-   * each of the left/right doorway gaps, and (rarely, deterministically)
-   * the access card on the floor. `rng` is seeded per-segment so re-
-   * visiting a segment later reproduces the same room numbers/card
-   * placement.
-   */
-  function furnishSegment(slot, assets, seg, rng, isCardSegment) {
-    const size = T();
-    const doorGapZ = slot.doorGapZ;
-    const group = slot.doorSlotsGroup;
+  buildInitial() {
+    this.spawnPoint = new THREE.Vector3(0, 0, 0);
+    this._allocateSlots();
+    this._centerSeg = 0;
+    this._furnishAllSlots();
+    // See enterRoom() below for the full explanation — same fix, same
+    // reason: the player is placed via a ground-height raycast against
+    // these colliders before the first render() pass would otherwise
+    // have resolved their matrixWorld.
+    for (const slot of this.slots) slot.group.updateMatrixWorld(true);
+    return { colliders: this.colliders, spawnPoint: this.spawnPoint };
+  }
 
-    for (const side of [-1, 1]) {
-      const x = side * (W() / 2);
-      const roomType = _pickRoomType(rng);
-      const roomNumber = 100 + Math.abs(seg) * 2 + (side === -1 ? 1 : 2);
+  _allocateSlots() {
+    const radius = GAME_CONFIG.hotelCorridor.streamRadius;
+    for (let s = -radius; s <= radius; s++) {
+      const shell = HotelCorridor.buildReusableSegment();
+      shell.group.name = `CorridorSeg_${s}`;
+      this.corridorRoot.add(shell.group);
 
-      const door = assets.get("woodenDoor");
-      const footprint = door.userData.footprint || { width: 1, height: DOOR_H(), depth: 0.1 };
-      const scale = DOOR_H() / Math.max(footprint.height, 0.01);
-      door.scale.setScalar(scale);
-      door.position.set(x, 0, 0);
-      door.rotation.y = side === -1 ? -Math.PI / 2 : Math.PI / 2;
-      group.add(door);
-      // Deliberately NOT pushed into slot.colliders: this door sits
-      // exactly in the doorway opening the player is meant to walk
-      // through to reach the room-enter trigger just past it. Making it
-      // solid blocked the player at the door plane — and since the
-      // door mesh has real height, the ground-height raycast used to
-      // settle the player's Y position could then find the TOP of the
-      // door instead of the corridor floor, which is what caused the
-      // player to appear to stand on top of the door instead of
-      // walking into the room.
-
-      // Small glowing number plate above the door
-      const plate = box(0.28, 0.16, 0.02, mats().doorNumberPlate);
-      plate.position.set(x + side * (0.03), DOOR_H() - 0.05, 0.36);
-      plate.rotation.y = side === -1 ? -Math.PI / 2 : Math.PI / 2;
-      group.add(plate);
-
-      slot.doorTriggers.push({
-        localPoint: new THREE.Vector3(x + side * 0.9, 1, 0),
-        radius: 1.1,
-        side,
-        roomType,
-        roomNumber,
+      this.slots.push({
+        group: shell.group,
+        floorMesh: shell.floorMesh,
+        shellColliders: shell.colliders,
+        doorSlotsGroup: shell.doorSlotsGroup,
+        doorGapZ: shell.doorGapZ,
+        colliders: [],
+        doorTriggers: [],
+        cardObj: null,
+        cardTriggerLocal: null,
+        cardTriggerRadius: 0,
+        seg: null,
+        sOffset: s,
       });
     }
+  }
 
-    slot.cardObj = null;
-    if (isCardSegment) {
-      const card = assets.get("accessCard", true);
-      card.position.set(0, 0.03, 0);
-      card.rotation.y = rng() * Math.PI * 2;
-      group.add(card);
-
-      const glow = box(1.0, 0.03, 1.0, mats().cardGlow);
-      glow.position.set(0, 0.015, 0);
-      group.add(glow);
-
-      const light = new THREE.PointLight(0x6fa8ff, 3.5, 5, 1.4);
-      light.position.set(0, 1.2, 0);
-      group.add(light);
-
-      slot.cardObj = { mesh: card, glow, light };
-      slot.cardTriggerLocal = new THREE.Vector3(0, 1, 0);
-      slot.cardTriggerRadius = 1.3;
+  update(playerPos) {
+    if (this.inRoom) return; // corridor doesn't stream while inside a room
+    const seg = this.worldToSeg(playerPos.z);
+    if (seg !== this._centerSeg) {
+      this._centerSeg = seg;
+      this._recenter();
     }
   }
 
-  function _pickRoomType(rng) {
-    const types = ["gothicSuite", "loungeRoom", "galleryRoom", "curtainRoom", "emptyRoom"];
-    return types[Math.floor(rng() * types.length)];
+  _recenter() {
+    const size = T();
+    for (const slot of this.slots) {
+      const newSeg = this._centerSeg + slot.sOffset;
+      slot.group.position.set(0, 0, newSeg * size);
+      if (slot.seg !== newSeg) {
+        this._furnishSlot(slot, newSeg);
+      }
+    }
+    this._rebuildColliderList();
   }
 
-  return {
-    buildReusableSegment,
-    furnishSegment,
-  };
-})();
+  _furnishAllSlots() {
+    for (const slot of this.slots) {
+      const seg = this._centerSeg + slot.sOffset;
+      slot.group.position.set(0, 0, seg * T());
+      this._furnishSlot(slot, seg);
+    }
+    this._rebuildColliderList();
+  }
+
+  _furnishSlot(slot, seg) {
+    this._clearSlotFurniture(slot);
+    const rng = Utils.makeRng(Utils.seedFromCoords(seg, 7331));
+    const isCardSegment = seg === this._cardSeg;
+    HotelCorridor.furnishSegment(slot, this.assets, seg, rng, isCardSegment);
+    slot.seg = seg;
+    slot.colliders = slot.colliders || [];
+  }
+
+  _clearSlotFurniture(slot) {
+    if (slot.seg === null) { slot.colliders = []; slot.doorTriggers = []; return; }
+    slot.doorSlotsGroup.traverse((n) => {
+      if (n.isMesh) {
+        n.geometry && n.geometry.dispose && n.geometry.dispose();
+        if (n.material) {
+          const ms = Array.isArray(n.material) ? n.material : [n.material];
+          ms.forEach((m) => m.dispose && m.dispose());
+        }
+      }
+      if (n.isLight && n !== slot.doorSlotsGroup) {
+        // point lights get GC'd with the group removal; nothing to unregister
+        // here since corridor lights aren't part of the flicker system.
+      }
+    });
+    while (slot.doorSlotsGroup.children.length) {
+      slot.doorSlotsGroup.remove(slot.doorSlotsGroup.children[0]);
+    }
+    slot.colliders = [];
+    slot.doorTriggers = [];
+    slot.cardObj = null;
+  }
+
+  _rebuildColliderList() {
+    const list = [];
+    for (const slot of this.slots) {
+      list.push(...slot.shellColliders);
+      list.push(...slot.colliders);
+    }
+    this.colliders = list;
+  }
+
+  /**
+   * Returns the nearest door trigger (world-space) the player is inside,
+   * or null. Called every frame by floorManager to detect "walked
+   * through a door" and trigger the room-enter transition.
+   */
+  findDoorTrigger(playerPos) {
+    for (const slot of this.slots) {
+      if (slot.seg === null) continue;
+      for (const trig of slot.doorTriggers) {
+        const worldX = trig.localPoint.x;
+        const worldZ = slot.seg * T() + trig.localPoint.z;
+        const dx = playerPos.x - worldX;
+        const dz = playerPos.z - worldZ;
+        if (Math.hypot(dx, dz) <= trig.radius) {
+          return trig;
+        }
+      }
+    }
+    return null;
+  }
+
+  checkCardTrigger(playerPos) {
+    for (const slot of this.slots) {
+      if (slot.seg === null || !slot.cardObj) continue;
+      const worldX = 0;
+      const worldZ = slot.seg * T();
+      const dx = playerPos.x - worldX;
+      const dz = playerPos.z - worldZ;
+      if (Math.hypot(dx, dz) <= slot.cardTriggerRadius) return true;
+    }
+    return false;
+  }
+
+  /** Hides the corridor and builds/enters a room interior. Returns the
+   *  local-space spawn point the caller should place the player at
+   *  (already converted to world space here since the room group sits
+   *  at a fixed world offset far from the corridor, to guarantee no
+   *  overlap with streamed corridor geometry). */
+  enterRoom(roomType, corridorReturnWorldPos) {
+    this.corridorRoot.visible = false;
+
+    this.roomGroup = new THREE.Group();
+    this.roomGroup.name = "HotelRoomInterior";
+    // Park the room far off in +X so it never spatially overlaps the
+    // corridor's collider list (both are simultaneously in the scene
+    // graph; only the corridor's VISIBILITY is toggled, not removal —
+    // removal/rebuild per room entry would be needlessly expensive for
+    // something entered/exited repeatedly).
+    this.roomGroup.position.set(5000, 0, 0);
+    this.scene.add(this.roomGroup);
+
+    const rng = Utils.makeRng(Utils.seedFromCoords(Math.round(corridorReturnWorldPos.z), roomType.length));
+    const result = HotelRooms.build(roomType, this.roomGroup, this.assets, this.lighting, rng);
+
+    // Newly-added meshes only get a correct matrixWorld once the
+    // renderer's next render() pass walks the scene graph — but the
+    // caller immediately raycasts against these colliders (via
+    // PlayerController._groundHeightAt) to place the player at floor
+    // height BEFORE that first render happens. Without this explicit
+    // update, the raycast runs against stale (often identity/origin)
+    // world matrices and misses the real floor, which is what caused
+    // the player to spawn floating near the doorway/lintel instead of
+    // standing on the room floor.
+    this.roomGroup.updateMatrixWorld(true);
+
+    this.inRoom = true;
+    this.roomColliders = result.colliders;
+    this.roomLights = result.lights || [];
+    this.roomExitInfo = {
+      corridorReturnWorldPos: corridorReturnWorldPos.clone(),
+      doorLocalWorld: result.doorLocal.clone().add(this.roomGroup.position),
+    };
+
+    this.colliders = this.roomColliders;
+
+    return result.spawnPoint.clone().add(this.roomGroup.position);
+  }
+
+  /** Returns true if the player is standing near the room's own door
+   *  (i.e. they've walked back to the doorway and should be returned
+   *  to the corridor). */
+  checkRoomExitTrigger(playerPos) {
+    if (!this.inRoom || !this.roomExitInfo) return false;
+    const d = playerPos.distanceTo(this.roomExitInfo.doorLocalWorld);
+    // Was 1.2 — exactly equal to the player's spawn-in distance from the
+    // door and no wider than the doorway opening itself, so walking back
+    // to the door didn't reliably re-enter the trigger sphere (hugging
+    // either side of the frame put you outside it while still visually
+    // "at the door"). Widened well past the doorway width so the whole
+    // opening counts, not just its exact center point.
+    return d <= 2.0;
+  }
+
+  /** Reverses enterRoom(): disposes the room group, restores the
+   *  corridor's visibility/colliders, and returns the world position
+   *  the player should be placed at back in the corridor. */
+  exitRoom() {
+    if (this.roomLights && this.roomLights.length) {
+      for (const light of this.roomLights) this.lighting.unregisterFixture(light);
+      this.roomLights = [];
+    }
+    if (this.roomGroup) {
+      this.roomGroup.traverse((n) => {
+        if (n.isMesh) {
+          n.geometry && n.geometry.dispose && n.geometry.dispose();
+          if (n.material) {
+            const ms = Array.isArray(n.material) ? n.material : [n.material];
+            ms.forEach((m) => m.dispose && m.dispose());
+          }
+        }
+      });
+      this.scene.remove(this.roomGroup);
+      this.roomGroup = null;
+    }
+    this.corridorRoot.visible = true;
+    this.inRoom = false;
+    this._rebuildColliderList();
+
+    const returnPos = this.roomExitInfo ? this.roomExitInfo.corridorReturnWorldPos.clone() : new THREE.Vector3(0, 0, 0);
+    this.roomExitInfo = null;
+    return returnPos;
+  }
+}
+
+function T() { return GAME_CONFIG.hotelCorridor.tileSize; }
