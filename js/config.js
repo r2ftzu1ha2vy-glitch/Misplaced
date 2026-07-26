@@ -227,10 +227,10 @@ const GAME_CONFIG = {
     // Paste your Firebase project's Web SDK config here.
     // Firebase Console -> Project Settings -> General -> Your apps -> SDK setup and config
     firebaseConfig: {
-      apiKey: "AIzaSyCcPQgxbntZI4e2mZU0G7TTfPz4rs-5oUo",
-      authDomain: "misplaced-b169e.firebaseapp.com",
-      databaseURL: "https://misplaced-b169e-default-rtdb.firebaseio.com/", // must be Realtime Database, not Firestore
-      projectId: "misplaced-b169e",
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com", // must be Realtime Database, not Firestore
+      projectId: "YOUR_PROJECT",
     },
     roomCodeChars: "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", // no 0/O/1/I to avoid confusion
     roomCodeLength: 4,
