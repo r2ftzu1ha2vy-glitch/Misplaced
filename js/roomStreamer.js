@@ -32,6 +32,10 @@ class RoomStreamer {
 
     this.slots = [];
     this._slotByCoord = new Map();
+    // slot -> {tx, tz} — tiles that need their (expensive) furniture
+    // actually built, processed a few at a time in _processFurnishQueue
+    // instead of all at once. See _coreOffsets' comment for why.
+    this._furnishQueue = new Map();
 
     this.colliders = [];
 
@@ -101,52 +105,35 @@ class RoomStreamer {
   }
 
   /**
-   * Instead of a full symmetric (2r+1)^2 grid, use a small fixed core
-   * (the player's tile + its 4 orthogonal neighbors, so nothing pops in
-   * right next to you) plus 2 "lookahead" tiles extended further in
-   * whatever direction the player is currently walking/facing — so you
-   * can always see the next room ahead without paying for a full 3x3
-   * (or larger) block most of which sits behind you. The lookahead
-   * offsets are recomputed on a cooldown in update() (see
-   * _updateLookaheadDir) rather than every frame, so glancing around
-   * with the mouse doesn't thrash tile rebuilds — only sustained
-   * movement in a new direction shifts the window.
+   * Full, static (2*1+1)^2 = 3x3 grid centered on the player's tile —
+   * every tile touching the player's tile (including diagonals) is
+   * always a live streamed slot. This used to be trimmed down to a
+   * fixed core (just the 4 orthogonal neighbors) plus a direction-
+   * biased lookahead to save on furniture/light cost, but that meant
+   * diagonal tiles were never actually streamed in — visible the
+   * instant a doorway lined up so you could see two rooms deep (e.g.
+   * standing in the center tile looking through the north room's own
+   * side door into the north-west tile), which reads as an obvious
+   * "unloaded room" hole instead of the level feeling infinite.
+   * Keeping the full 3x3 window guarantees there's no direction you
+   * can look in from your own tile that exposes a not-yet-streamed
+   * tile. Frame cost is now managed via a time-sliced furnish queue
+   * (see _queueFurnish/_processFurnishQueue) instead of shrinking the
+   * grid, so rebuilding several tiles' worth of furniture after a move
+   * never has to happen in a single frame.
    */
   _coreOffsets() {
-    return [
-      { sdx: 0, sdz: 0 },
-      { sdx: 1, sdz: 0 },
-      { sdx: -1, sdz: 0 },
-      { sdx: 0, sdz: 1 },
-      { sdx: 0, sdz: -1 },
-    ];
-  }
-
-  _computeOffsetsForDir(dirTx, dirTz) {
-    const offsets = this._coreOffsets();
-    const key = (o) => o.sdx + "," + o.sdz;
-    const seen = new Set(offsets.map(key));
-    const reach = GAME_CONFIG.floor1.lookaheadTiles || 2;
-    // Extend further out in the current facing/movement direction so
-    // the "next room(s)" are always already streamed in.
-    for (let step = 2; step <= reach + 1; step++) {
-      const o = { sdx: dirTx * (step - 1), sdz: dirTz * (step - 1) };
-      const k = key(o);
-      if (!seen.has(k)) {
-        offsets.push(o);
-        seen.add(k);
+    const offsets = [];
+    for (let sdx = -1; sdx <= 1; sdx++) {
+      for (let sdz = -1; sdz <= 1; sdz++) {
+        offsets.push({ sdx, sdz });
       }
     }
     return offsets;
   }
 
   _allocateSlots() {
-    this._lookaheadDirTx = 0;
-    this._lookaheadDirTz = -1; // default: player starts facing -Z
-    this._lastDirCheckPos = null;
-    this._dirCooldown = 0;
-
-    const offsets = this._computeOffsetsForDir(this._lookaheadDirTx, this._lookaheadDirTz);
+    const offsets = this._coreOffsets();
     for (const { sdx, sdz } of offsets) {
         const shell = RoomTiles.buildReusableShell();
         shell.group.name = `Shell_${sdx}_${sdz}`;
@@ -178,81 +165,47 @@ class RoomStreamer {
       this._centerTz = tz;
       this._recenter();
     }
-    this._updateLookaheadDir(playerPos);
+    this._processFurnishQueue();
   }
 
   /**
-   * Re-evaluates which direction to extend the lookahead tiles in,
-   * based on actual movement (distance travelled since the last check),
-   * not raw camera look direction — checked at most twice a second and
-   * only acted on once the player has moved a meaningful distance, so
-   * turning the mouse to glance sideways never triggers a rebuild; only
-   * genuinely walking a new way does.
+   * Time-sliced furniture building: _recenter() clears out any slot
+   * whose tile changed immediately (cheap — just disposal + a floor
+   * material swap) but defers the actual furniture construction (asset
+   * cloning, collider setup, RNG room layout — the expensive part) to
+   * here, spread across a handful of frames instead of however many
+   * tiles changed in one go. Crossing a single tile boundary can
+   * reassign up to 3 slots at once in a 3x3 grid (a whole trailing
+   * edge), and a diagonal step can reassign 5 — building all of those
+   * synchronously in one frame is exactly the kind of frame-time spike
+   * that reads as "lag" when you cross into a new room. Budget is
+   * small enough to be invisible (each slot is well outside the fog
+   * line, mid-clear, when its turn comes up) but big enough that the
+   * queue never meaningfully falls behind normal walking speed.
    */
-  _updateLookaheadDir(playerPos) {
-    this._dirCooldown -= 1;
-    if (this._dirCooldown > 0) return;
-    this._dirCooldown = 20; // ~ every 20 update() calls (roughly a third-to-half second at 60fps)
-
-    if (!this._lastDirCheckPos) {
-      this._lastDirCheckPos = playerPos.clone();
-      return;
-    }
-    const dx = playerPos.x - this._lastDirCheckPos.x;
-    const dz = playerPos.z - this._lastDirCheckPos.z;
-    this._lastDirCheckPos = playerPos.clone();
-
-    const moved = Math.hypot(dx, dz);
-    if (moved < 0.6) return; // standing still / barely moved — keep current lookahead
-
-    const newDirTx = Math.abs(dx) >= Math.abs(dz) ? Math.sign(dx) : 0;
-    const newDirTz = Math.abs(dz) > Math.abs(dx) ? Math.sign(dz) : 0;
-    if (newDirTx === 0 && newDirTz === 0) return;
-    if (newDirTx === this._lookaheadDirTx && newDirTz === this._lookaheadDirTz) return;
-
-    this._lookaheadDirTx = newDirTx;
-    this._lookaheadDirTz = newDirTz;
-    this._reassignLookaheadSlots();
+  _queueFurnish(slot, tx, tz) {
+    this._furnishQueue.set(slot, { tx, tz });
   }
 
-  /**
-   * Re-tasks whichever slots currently sit at "old" lookahead offsets
-   * (i.e. not part of the fixed core) into the new direction's
-   * lookahead offsets, re-furnishing them for their new tile coord —
-   * same reuse-not-rebuild approach _recenter() already uses for the
-   * shell geometry itself.
-   */
-  _reassignLookaheadSlots() {
-    const coreKeys = new Set(this._coreOffsets().map((o) => o.sdx + "," + o.sdz));
-    const newOffsets = this._computeOffsetsForDir(this._lookaheadDirTx, this._lookaheadDirTz)
-      .filter((o) => !coreKeys.has(o.sdx + "," + o.sdz));
+  _processFurnishQueue() {
+    if (this._furnishQueue.size === 0) return;
+    let budget = GAME_CONFIG.floor1.furnishPerFrame || 2;
+    let rebuiltAny = false;
 
-    const size = GAME_CONFIG.floor1.tileSize;
-    const freeSlots = this.slots.filter((s) => !coreKeys.has(s.sdx + "," + s.sdz));
-
-    for (let i = 0; i < freeSlots.length && i < newOffsets.length; i++) {
-      const slot = freeSlots[i];
-      const { sdx, sdz } = newOffsets[i];
-      slot.sdx = sdx;
-      slot.sdz = sdz;
-
-      const newTx = this._centerTx + sdx;
-      const newTz = this._centerTz + sdz;
-      slot.group.position.set(newTx * size, 0, newTz * size);
-
-      if (slot.tx !== newTx || slot.tz !== newTz) {
-        this._furnishSlot(slot, newTx, newTz);
+    for (const [slot, job] of this._furnishQueue) {
+      if (budget <= 0) break;
+      this._furnishQueue.delete(slot);
+      // The slot may have been reassigned again (e.g. player doubled
+      // back) before this job came up — only build it if it's still
+      // the tile we queued it for.
+      if (slot.tx === job.tx && slot.tz === job.tz) {
+        this._buildSlotFurniture(slot, job.tx, job.tz);
+        rebuiltAny = true;
       }
+      budget--;
     }
-    this._rebuildSlotByCoord();
-    this._rebuildColliderList();
-  }
 
-  _rebuildSlotByCoord() {
-    this._slotByCoord.clear();
-    for (const slot of this.slots) {
-      if (slot.tx !== null) this._slotByCoord.set(this.tileKey(slot.tx, slot.tz), slot);
-    }
+    if (rebuiltAny) this._rebuildColliderList();
   }
 
   /** Public lookup for "what room type is the player standing in right
@@ -302,7 +255,19 @@ class RoomStreamer {
 
       const tileChanged = slot.tx !== newTx || slot.tz !== newTz;
       if (tileChanged) {
-        this._furnishSlot(slot, newTx, newTz);
+        // Cheap part happens right away: drop the old furniture/colliders
+        // so nothing stale is left standing at the new position, and
+        // reflect the new coordinate immediately so lookups (exit
+        // triggers, N-tity's room-type check, etc.) are correct even
+        // before the room is actually built. The expensive part — RNG
+        // room layout + asset cloning — goes on the furnish queue and
+        // gets spread across the next few frames (see
+        // _processFurnishQueue) instead of happening here.
+        this._clearSlotFurniture(slot);
+        slot.tx = newTx;
+        slot.tz = newTz;
+        slot.roomType = null; // pending — set once its furnish job actually runs
+        this._queueFurnish(slot, newTx, newTz);
       }
 
       this._slotByCoord.set(this.tileKey(newTx, newTz), slot);
@@ -312,11 +277,15 @@ class RoomStreamer {
   }
 
   _furnishAllSlots() {
+    // Initial build happens synchronously (no queue) — this only runs
+    // once, before the title screen's "CLICK TO ENTER", so there's no
+    // frame-time budget to protect yet and the player needs a fully
+    // furnished spawn tile the instant they start.
     for (const slot of this.slots) {
       const tx = this._centerTx + slot.sdx;
       const tz = this._centerTz + slot.sdz;
       slot.group.position.set(tx * GAME_CONFIG.floor1.tileSize, 0, tz * GAME_CONFIG.floor1.tileSize);
-      this._furnishSlot(slot, tx, tz);
+      this._buildSlotFurniture(slot, tx, tz);
       this._slotByCoord.set(this.tileKey(tx, tz), slot);
     }
     this._rebuildColliderList();
@@ -344,9 +313,13 @@ class RoomStreamer {
     return steps * (Math.PI / 2);
   }
 
-  _furnishSlot(slot, tx, tz) {
-    this._clearSlotFurniture(slot);
-
+  /** Does the actual (relatively expensive) room-layout work: RNG room
+   *  type/rotation pick, asset cloning, collider/light setup. Called
+   *  either synchronously for the initial spawn furnish (_furnishAllSlots)
+   *  or later, spread across frames, from _processFurnishQueue. Callers
+   *  are responsible for clearing any previous furniture first (see
+   *  _recenter) — this only builds, it doesn't tear down. */
+  _buildSlotFurniture(slot, tx, tz) {
     const seed = Utils.seedFromCoords(tx, tz);
     const rng = Utils.makeRng(seed);
     const roomType = this._pickRoomType(tx, tz, rng);
