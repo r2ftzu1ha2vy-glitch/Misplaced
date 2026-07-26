@@ -311,7 +311,7 @@
         const code = await Multiplayer.createRoom();
         createdCodeEl.textContent = code.split("").join(" ");
         await Multiplayer.connect(code, scene, {
-          getPosition: () => player.position,
+          getPosition: () => new THREE.Vector3(player.position.x, player.position.y - player.currentHeight, player.position.z),
           getYaw: () => player.yaw,
           getFloorLabel: () => (floorManager ? floorManager.state : ""),
         }, { onRosterChange: (n) => updateBadge() });
@@ -354,7 +354,7 @@
           return;
         }
         await Multiplayer.connect(code, scene, {
-          getPosition: () => player.position,
+          getPosition: () => new THREE.Vector3(player.position.x, player.position.y - player.currentHeight, player.position.z),
           getYaw: () => player.yaw,
           getFloorLabel: () => (floorManager ? floorManager.state : ""),
         }, { onRosterChange: (n) => updateBadge() });
