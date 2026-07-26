@@ -87,9 +87,25 @@
     const statusEl = document.getElementById("loadingStatus");
     const barEl = document.getElementById("loadingBar");
 
+    // Load BOTH floors' assets up front, under one combined progress bar,
+    // so the loading screen actually reflects everything the game needs —
+    // previously Floor 2's hotel models loaded silently in the background
+    // after "CLICK TO ENTER" appeared, which looked like the game had only
+    // ever loaded Floor 1.
+    const floor1Total = Object.keys(GAME_CONFIG.models).length;
+    const floor2Total = Object.keys(GAME_CONFIG.modelsFloor2).length;
+    const grandTotal = floor1Total + floor2Total;
+
     await assets.loadAll((done, total, key) => {
-      const pct = Math.round((done / total) * 100);
-      if (statusEl) statusEl.textContent = `Loading ${key}… (${done}/${total})`;
+      const pct = Math.round((done / grandTotal) * 100);
+      if (statusEl) statusEl.textContent = `Loading ${key}… (${done}/${grandTotal})`;
+      if (barEl) barEl.style.width = pct + "%";
+    });
+
+    await assets.loadFloor2((done, total, key) => {
+      const overallDone = floor1Total + done;
+      const pct = Math.round((overallDone / grandTotal) * 100);
+      if (statusEl) statusEl.textContent = `Loading ${key}… (${overallDone}/${grandTotal})`;
       if (barEl) barEl.style.width = pct + "%";
     });
 
@@ -117,15 +133,6 @@
     floorManager = new FloorManager({ scene, assets, lighting, atmosphere, player, camera });
     floorManager.initFloor1(roomStreamer);
     floorManager.onWin(onWin);
-
-    // Floor 2's hotel assets aren't needed until the player actually
-    // reaches Floor 1's exit gate, so load them quietly in the
-    // background after the title screen is already interactive rather
-    // than blocking it — by the time anyone crosses the office and
-    // finds a gate, this has almost certainly finished.
-    assets.loadFloor2().catch((e) =>
-      Utils.logError("Failed to background-load Floor 2 assets: " + (e && e.message ? e.message : e))
-    );
 
     return assets;
   }
