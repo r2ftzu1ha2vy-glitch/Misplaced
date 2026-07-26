@@ -155,19 +155,23 @@ const GAME_CONFIG = {
     wallHeight: 2.7,
     doorWidth: 2.4,
     wallThickness: 0.25,
-    // Tiles loaded in each direction around the player's current tile.
-    // At radius 2 that's a 5x5 = 25 tiles loaded at once, each with its
-    // own furniture and ceiling lights — but atmosphere.fogFar (26) already
-    // makes anything past ~1.3 tiles invisible, so the outer ring was
-    // being fully built, lit, and rendered for nothing. Radius 1 (9 tiles)
-    // still leaves a comfortable buffer past the fog line for seamless
-    // streaming, at roughly a third of the geometry/light cost.
-    // Floor 1 now streams a fixed core (player tile + 4 neighbors) plus
-    // a direction-biased lookahead that extends this many tiles further
-    // out in whatever way the player is currently walking — see
-    // roomStreamer.js's _computeOffsetsForDir. Overridden per device
-    // tier in main.js's applyDeviceTierConfig.
-    lookaheadTiles: 2,
+    // Tiles loaded around the player's current tile: a full, static
+    // radius-1 = 3x3 = 9-tile grid (every tile touching the player's
+    // tile, diagonals included — see roomStreamer.js's _coreOffsets).
+    // atmosphere.fogFar (26) already makes anything past ~1.3 tiles
+    // invisible, so this still leaves a comfortable buffer past the fog
+    // line. Crossing a tile boundary can require rebuilding several of
+    // those 9 slots' furniture at once (a full edge, or up to 5 on a
+    // diagonal step) — rather than shrinking the grid to cut that cost
+    // (which used to leave diagonal tiles unstreamed and visibly
+    // "not loaded" through doorways), that rebuild work is spread over
+    // multiple frames. This is how many tiles' furniture may be built
+    // per frame; lower values smooth out frame time further at the cost
+    // of a slightly longer (still sub-second, still off in the
+    // fogged-out distance) window before a freshly entered edge tile is
+    // fully dressed. Overridden per device tier in main.js's
+    // applyDeviceTierConfig.
+    furnishPerFrame: 3,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
     minTilesFromSpawnForExit: 20, // min tiles out an exit gate can be placed
     maxTilesFromSpawnForExit: 50, // max tiles out an exit gate can be placed
