@@ -163,8 +163,16 @@ class RoomStreamer {
   update(playerPos) {
     const { tx, tz } = this.worldToTile(playerPos.x, playerPos.z);
     if (tx !== this._centerTx || tz !== this._centerTz) {
-      this._lastMoveDirTx = Math.sign(tx - (this._centerTx ?? tx));
-      this._lastMoveDirTz = Math.sign(tz - (this._centerTz ?? tz));
+      const dtx = tx - (this._centerTx ?? tx);
+      const dtz = tz - (this._centerTz ?? tz);
+      // Only update the remembered direction on an actual step — never
+      // let it collapse to (0,0)/get overwritten by a diagonal partial
+      // move, since a stale/zeroed direction is what caused the front
+      // tile priority to flip-flop (build → looked wrong → rebuild).
+      if (dtx !== 0 || dtz !== 0) {
+        this._lastMoveDirTx = Math.sign(dtx);
+        this._lastMoveDirTz = Math.sign(dtz);
+      }
       this._centerTx = tx;
       this._centerTz = tz;
       this._recenter();
@@ -188,6 +196,12 @@ class RoomStreamer {
    * queue never meaningfully falls behind normal walking speed.
    */
   _queueFurnish(slot, tx, tz) {
+    // Overwrite any still-pending job for this slot — only the most
+    // recent tile assignment matters. Without this, a slot that gets
+    // reassigned twice before the queue drains (e.g. quickly stepping
+    // forward then stepping back) could still have last quarter's job
+    // sitting in the queue, and it building AFTER the correct one would
+    // look like the room changed then changed back.
     this._furnishQueue.set(slot, { tx, tz });
   }
 
