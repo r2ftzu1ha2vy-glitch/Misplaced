@@ -255,15 +255,13 @@ class RoomStreamer {
 
       const tileChanged = slot.tx !== newTx || slot.tz !== newTz;
       if (tileChanged) {
-        // Cheap part happens right away: drop the old furniture/colliders
-        // so nothing stale is left standing at the new position, and
-        // reflect the new coordinate immediately so lookups (exit
-        // triggers, N-tity's room-type check, etc.) are correct even
-        // before the room is actually built. The expensive part — RNG
-        // room layout + asset cloning — goes on the furnish queue and
-        // gets spread across the next few frames (see
-        // _processFurnishQueue) instead of happening here.
-        this._clearSlotFurniture(slot);
+        // Don't touch the furniture yet — the OLD room's furniture stays
+        // exactly where it is (now sitting at the new slot position)
+        // until the new room is actually built and ready to swap in.
+        // Only the coordinate is updated now, so lookups (exit triggers,
+        // N-tity's room-type check) reflect the new tile immediately;
+        // the visible swap happens atomically inside _buildSlotFurniture
+        // once its queued turn comes up (see _processFurnishQueue).
         slot.tx = newTx;
         slot.tz = newTz;
         slot.roomType = null; // pending — set once its furnish job actually runs
@@ -324,6 +322,12 @@ class RoomStreamer {
     const rng = Utils.makeRng(seed);
     const roomType = this._pickRoomType(tx, tz, rng);
     const rotationY = this._pickRoomRotation(tx, tz, rng);
+
+    // Old furniture (if any) is only torn down right here, immediately
+    // before the new furniture goes up in the same synchronous call —
+    // so there's never a frame where the slot sits empty/bare. It's a
+    // swap, not a remove-then-load.
+    this._clearSlotFurniture(slot);
 
     slot.floorMesh.material = RoomTiles.floorMatForRoomType(roomType);
 
