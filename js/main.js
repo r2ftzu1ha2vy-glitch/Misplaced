@@ -66,9 +66,9 @@
     if (tier === "low") {
       GAME_CONFIG.floor1.furnishPerFrame = 1;
     } else if (tier === "mid") {
-      GAME_CONFIG.floor1.furnishPerFrame = 2;
+      GAME_CONFIG.floor1.furnishPerFrame = 1;
     } else {
-      GAME_CONFIG.floor1.furnishPerFrame = 3; // high: unchanged default
+      GAME_CONFIG.floor1.furnishPerFrame = 2; // high: unchanged default
     }
   }
 
