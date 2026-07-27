@@ -171,7 +171,7 @@ const GAME_CONFIG = {
     // fogged-out distance) window before a freshly entered edge tile is
     // fully dressed. Overridden per device tier in main.js's
     // applyDeviceTierConfig.
-    furnishPerFrame: 3,
+    furnishPerFrame: 2,
     streamRebuildMargin: 0.5, // fraction of a tile the player must cross before re-streaming
     minTilesFromSpawnForExit: 20, // min tiles out an exit gate can be placed
     maxTilesFromSpawnForExit: 50, // max tiles out an exit gate can be placed
