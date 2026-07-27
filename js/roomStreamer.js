@@ -44,6 +44,8 @@ class RoomStreamer {
 
     this._centerTx = null;
     this._centerTz = null;
+    this._lastMoveDirTx = 0;
+    this._lastMoveDirTz = -1; // default: player starts facing -Z
 
     this.spawnPoint = new THREE.Vector3(0, 0, 0);
   }
@@ -161,6 +163,8 @@ class RoomStreamer {
   update(playerPos) {
     const { tx, tz } = this.worldToTile(playerPos.x, playerPos.z);
     if (tx !== this._centerTx || tz !== this._centerTz) {
+      this._lastMoveDirTx = Math.sign(tx - (this._centerTx ?? tx));
+      this._lastMoveDirTz = Math.sign(tz - (this._centerTz ?? tz));
       this._centerTx = tx;
       this._centerTz = tz;
       this._recenter();
@@ -192,7 +196,15 @@ class RoomStreamer {
     let budget = GAME_CONFIG.floor1.furnishPerFrame || 2;
     let rebuiltAny = false;
 
-    for (const [slot, job] of this._furnishQueue) {
+    // Build side/behind tiles before the front tile — the one straight
+    // ahead in the direction the player just moved is the one they're
+    // most likely staring right at, so it's built last among this
+    // batch (still within the same frame or two, just ordered so any
+    // pop-in happens off to the side first, front last/least noticed).
+    const jobs = Array.from(this._furnishQueue.entries());
+    jobs.sort((a, b) => this._frontPriority(a[1]) - this._frontPriority(b[1]));
+
+    for (const [slot, job] of jobs) {
       if (budget <= 0) break;
       this._furnishQueue.delete(slot);
       // The slot may have been reassigned again (e.g. player doubled
@@ -206,6 +218,17 @@ class RoomStreamer {
     }
 
     if (rebuiltAny) this._rebuildColliderList();
+  }
+
+  /** Lower = built sooner. The tile straight ahead in the player's last
+   *  movement direction sorts last (highest number) so it's the last
+   *  one swapped in when a move exposes several new edge tiles at
+   *  once. */
+  _frontPriority(job) {
+    const dtx = job.tx - this._centerTx;
+    const dtz = job.tz - this._centerTz;
+    const isFront = dtx === this._lastMoveDirTx && dtz === this._lastMoveDirTz;
+    return isFront ? 1 : 0;
   }
 
   /** Public lookup for "what room type is the player standing in right
