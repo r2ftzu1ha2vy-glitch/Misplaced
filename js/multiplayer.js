@@ -205,6 +205,9 @@ const Multiplayer = (() => {
             if (n.isMesh) { n.castShadow = false; n.receiveShadow = false; }
           });
           if (pm.scaleFix && pm.scaleFix !== 1) root.scale.multiplyScalar(pm.scaleFix);
+          // player.glb is authored facing local -Z (glTF/Three.js default).
+          // Rotate it so its front faces +X to match the game's forward axis.
+          root.rotation.y += Math.PI / 2;
           // Same footprint/origin-align trick as AssetManager._prepModel,
           // kept local here since multiplayer avatars load independently
           // of the level's AssetManager (they're not part of any floor).
