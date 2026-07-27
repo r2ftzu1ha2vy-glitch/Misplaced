@@ -172,7 +172,7 @@ const HotelCorridor = (() => {
 
       doorTriggers.push({
         localPoint: new THREE.Vector3(x - side.sign * 0.4, 0, 0),
-        radius: 1.1,
+        radius: 0.65,
         roomType,
         roomNumber,
       });
