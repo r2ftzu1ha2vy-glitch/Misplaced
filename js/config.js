@@ -214,7 +214,7 @@ const GAME_CONFIG = {
     paintingBek3: 0.258,  // raw ~3.9x5.0x0.58 -> ~1.3m tall wall piece
     accessCard: 0.0065,   // raw ~8x14x1.1 -> ~0.09m long, credit-card scale
     receptionDesk: 0.644, // raw height 1.63 -> ~1.05m counter height
-    woodenDoor: 0.1,    // raw height 6.2 -> ~2.2m doorway height
+    woodenDoor: 1,    // raw height 6.2 -> ~2.2m doorway height
   },
 
   hotelLobby: {
