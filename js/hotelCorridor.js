@@ -143,23 +143,31 @@ const HotelCorridor = (() => {
     // label ("FLOOR 2 // ROOM 4C" etc.) — derived deterministically from
     // the segment + side so the same door always shows the same number.
     const doorChance = 0.55;
+    const h = H();
+    const wt = WT();
     const sides = [
       { sign: -1, key: "L" },
       { sign: 1, key: "R" },
     ];
 
     for (const side of sides) {
-      if (rng() >= doorChance) continue; // this wall stays blank this segment
+      const x = side.sign * (w / 2);
+
+      if (rng() >= doorChance) {
+        // This wall stays blank this segment — but the shell always has a
+        // structural gap here, so plug it with solid wall instead of
+        // leaving an open hole with nothing behind it.
+        const plug = box(wt, h, doorW, mats().wall);
+        plug.position.set(x, h / 2, 0);
+        slot.doorSlotsGroup.add(plug);
+        colliders.push(plug);
+        continue;
+      }
 
       const roomType = ROOM_TYPES[Math.floor(rng() * ROOM_TYPES.length)];
       const roomNumber = `${Math.abs(seg) + 1}${side.key}`;
 
-      const x = side.sign * (w / 2);
       const door = assets.get("woodenDoor");
-      if (!door) {
-        console.warn("hotelCorridor: 'woodenDoor' asset not ready, skipping this door slot");
-        continue; // don't add a trigger/room number for a door that isn't visually there
-      }
       const footprint = door.userData.footprint || { width: doorW, height: doorH, depth: 0.1 };
       const scale = doorH / Math.max(footprint.height, 0.01);
       door.scale.setScalar(scale);
@@ -176,7 +184,7 @@ const HotelCorridor = (() => {
 
       doorTriggers.push({
         localPoint: new THREE.Vector3(x - side.sign * 0.4, 0, 0),
-        radius: 1.1,
+        radius: 0.55,
         roomType,
         roomNumber,
       });
