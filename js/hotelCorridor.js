@@ -156,6 +156,10 @@ const HotelCorridor = (() => {
 
       const x = side.sign * (w / 2);
       const door = assets.get("woodenDoor");
+      if (!door) {
+        console.warn("hotelCorridor: 'woodenDoor' asset not ready, skipping this door slot");
+        continue; // don't add a trigger/room number for a door that isn't visually there
+      }
       const footprint = door.userData.footprint || { width: doorW, height: doorH, depth: 0.1 };
       const scale = doorH / Math.max(footprint.height, 0.01);
       door.scale.setScalar(scale);
@@ -172,7 +176,7 @@ const HotelCorridor = (() => {
 
       doorTriggers.push({
         localPoint: new THREE.Vector3(x - side.sign * 0.4, 0, 0),
-        radius: 0.65,
+        radius: 1.1,
         roomType,
         roomNumber,
       });
