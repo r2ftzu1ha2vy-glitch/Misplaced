@@ -178,7 +178,7 @@ export class RoomManager {
         }
       }
 
-      const piece = { mesh: o, box, kind, edge, blocked: false, forced: false, nx: 0, nz: 0 };
+      const piece = { mesh: o, box, kind, edge, blocked: false, forced: false, nx: 0, nz: 0, show: true, culled: false };
       if (edge >= 0) {
         piece.nx = cx + DIRS[edge].dx;
         piece.nz = cz + DIRS[edge].dz;
@@ -201,6 +201,7 @@ export class RoomManager {
           }
         }
         o.visible = piece.blocked;
+        piece.show = piece.blocked;
       }
 
       room.pieces.push(piece);
@@ -237,8 +238,51 @@ export class RoomManager {
         const n = this.rooms.get(key(p.nx, p.nz));
         if (n && owns(n, room)) show = false;
       }
-      p.mesh.visible = show;
+      p.show = show;
+      p.mesh.visible = show && !p.culled;
     }
+  }
+
+  /**
+   * Distance culling. Anything whose nearest point is beyond `range` metres from (x,z) is
+   * completely swallowed by fog, so not drawing it is lossless. `show` (logical visibility,
+   * used by collision / line of sight) is never changed here, only the render flag.
+   */
+  cull(x, z, range) {
+    const r2 = range * range;
+    for (const room of this.rooms.values()) {
+      for (const p of room.pieces) {
+        const b = p.box;
+        const dx = x < b.min.x ? b.min.x - x : x > b.max.x ? x - b.max.x : 0;
+        const dz = z < b.min.z ? b.min.z - z : z > b.max.z ? z - b.max.z : 0;
+        const culled = dx * dx + dz * dz > r2;
+        if (culled !== p.culled) {
+          p.culled = culled;
+          p.mesh.visible = p.show && !culled;
+        }
+      }
+    }
+  }
+
+  /** Upload every texture to the GPU and compile every material once, so nothing hitches mid-game. */
+  prewarm(renderer, camera, onProgress = () => {}) {
+    const seen = new Set();
+    const texKeys = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap'];
+    const tpls = [...this.library.templates.values()];
+    tpls.forEach((tpl, i) => {
+      this.scene.add(tpl.scene);
+      tpl.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) for (const k of texKeys) {
+          const t = m && m[k];
+          if (t && !seen.has(t)) { seen.add(t); renderer.initTexture(t); }
+        }
+      });
+      renderer.compile(this.scene, camera);
+      this.scene.remove(tpl.scene);
+      onProgress((i + 1) / tpls.length, 'Preparing rooms');
+    });
   }
 
   assignLights() {
@@ -307,7 +351,7 @@ export class RoomManager {
   lineBlocked(ax, az, bx, bz) {
     for (const room of this.rooms.values()) {
       for (const p of room.pieces) {
-        if (p.edge < 0 || (p.kind !== 'wall' && p.kind !== 'blocker') || !p.mesh.visible) continue;
+        if (p.edge < 0 || (p.kind !== 'wall' && p.kind !== 'blocker') || !p.show) continue;
         const b = p.box;
         if (b.max.y < 1.0 || b.min.y > 1.7) continue;
         if (segHitsBox(ax, az, bx, bz, b)) return true;
@@ -321,7 +365,7 @@ export class RoomManager {
     out.length = 0;
     for (const room of this.rooms.values()) {
       for (const p of room.solids) {
-        if (!p.mesh.visible) continue;
+        if (!p.show) continue;
         const b = p.box;
         if (x < b.min.x - reach || x > b.max.x + reach || z < b.min.z - reach || z > b.max.z + reach) continue;
         out.push(b);
