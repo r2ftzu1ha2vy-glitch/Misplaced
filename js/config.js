@@ -35,6 +35,16 @@ export const CONFIG = {
   collideFurniture: true,  // furniture meshes block the player too (axis-aligned boxes)
   minPropSize: 0.12,       // ignore furniture meshes smaller than this (metres) in X and Z
 
+  // --- Performance ----------------------------------------------------------------
+  render: {
+    antialias: true,
+    maxPixelRatio: 1.5,    // hard cap on resolution scale (was devicePixelRatio up to 2)
+    minPixelRatio: 0.6,    // adaptive resolution never drops below this
+    adaptive: true,        // lower resolution automatically when fps is below targetFps
+    targetFps: 50,
+    cullPadding: 1.5,      // metres past fog.far before geometry stops being drawn
+  },
+
   // --- Look ---------------------------------------------------------------------
   fog: { color: 0x050403, near: 1.5, far: 14 },
   lighting: {
