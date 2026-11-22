@@ -32,7 +32,7 @@
   #fear { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0;
     background: radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(110,0,0,0.75) 100%); }
   #grain { position: fixed; inset: -100px; pointer-events: none; z-index: 4; opacity: 0.09;
-    animation: grain 0.5s steps(6) infinite; mix-blend-mode: overlay; }
+    animation: grain 0.5s steps(6) infinite; will-change: transform; }
   @keyframes grain { 0%{transform:translate(0,0)} 20%{transform:translate(-37px,23px)} 40%{transform:translate(41px,-31px)}
     60%{transform:translate(-23px,-47px)} 80%{transform:translate(29px,38px)} 100%{transform:translate(0,0)} }
   #static { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0; background: #fff; mix-blend-mode: difference; }
